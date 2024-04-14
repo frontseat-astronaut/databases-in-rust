@@ -14,6 +14,7 @@ impl<T: KVDb> Test<T> {
     pub fn run(&mut self) {
         println!("starting test");
         self.get_value_for_test("k1");
+        self.get_value_for_test("k2");
         self.set_key_value_for_test("k1", "v11");
         self.get_value_for_test("k1");
         self.set_key_value_for_test("k1", "v12");
@@ -28,7 +29,7 @@ impl<T: KVDb> Test<T> {
     fn set_key_value_for_test(&mut self, key: &str, value: &str) {
         match self.db.set(key, value) {
             Ok(()) => {
-                println!("set value for key {} successfully", key)
+                println!("set value {} for key {} successfully", value, key)
             }
             Err(e) => {
                 println!("error setting value for key {}: {}", key, e)

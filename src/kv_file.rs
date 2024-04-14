@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom, Write};
 use crate::kvdb::error::Error;
 
 const DELIMITER: &str = ",";
+const TOMBSTONE: &str = "🪦";
 
 pub struct KVFile {
     dir_path: String,
@@ -18,7 +19,7 @@ impl KVFile {
         }
     }
 
-    pub fn read_lines(&self, process_line: &mut dyn FnMut(String, String, u64) -> Result<(), Error>) -> Result<(), Error> {
+    pub fn read_lines(&self, process_line: &mut dyn FnMut(String, Option<String>, u64) -> Result<(), Error>) -> Result<(), Error> {
         self.open_file().and_then(|mut file| {
             let mut reader = BufReader::new(&mut file);
             loop {
@@ -42,7 +43,7 @@ impl KVFile {
         })
     }
 
-    pub fn append_line(&mut self, key: &str, value: &str) -> Result<u64, Error> {
+    pub fn append_line(&mut self, key: &str, value: Option<&str>) -> Result<u64, Error> {
         self.open_file()
             .and_then(|mut file| {
                 match file.seek(SeekFrom::End(0)) {
@@ -74,7 +75,7 @@ impl KVFile {
                 match Self::read_line(&mut reader) {
                     Ok(None) => Ok(None),
                     Ok(Some((_, value))) => {
-                        Ok(Some(value))
+                        Ok(value)
                     }
                     Err(e) => Err(e),
                 }
@@ -96,7 +97,7 @@ impl KVFile {
             })
     }
 
-    fn read_line(reader: &mut BufReader<&mut File>) -> Result<Option<(String, String)>, Error> {
+    fn read_line(reader: &mut BufReader<&mut File>) -> Result<Option<(String, Option<String>)>, Error> {
         let mut buf = String::new();
         match reader.read_line(&mut buf) {
             Ok(0) => Ok(None),
@@ -104,7 +105,13 @@ impl KVFile {
                 // remove \n
                 let _ = buf.split_off(buf.len() - 1);
                 match buf.split_once(DELIMITER) {
-                    Some((key, value)) => Ok(Some((key.to_string(), value.to_string()))),
+                    Some((key, read_value)) => {
+                        let mut value = None;
+                        if read_value != TOMBSTONE {
+                            value = Some(read_value.to_string())
+                        }
+                        Ok(Some((key.to_string(), value)))
+                    },
                     None => Err(
                             Error::new(
                                 &format!("ill-formed line in file, expected the delimiter '{}' to be present", DELIMITER)
@@ -116,9 +123,13 @@ impl KVFile {
         }
     }
 
-    fn write_line(&self, key: &str, value: &str) -> Result<(), Error> {
+    fn write_line(&self, key: &str, value: Option<&str>) -> Result<(), Error> {
+        let written_value = match value {
+            Some(value) => value,
+            None => TOMBSTONE,
+        };
         self.open_file().and_then(|mut file| {
-            if let Err(e) = writeln!(&mut file, "{}{}{}", key, DELIMITER, value) {
+            if let Err(e) = writeln!(&mut file, "{}{}{}", key, DELIMITER, written_value) {
                 return Err(Error::from_io_error(&e))
             }
             Ok(())

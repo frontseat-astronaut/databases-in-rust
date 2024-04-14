@@ -6,18 +6,17 @@ pub struct LogWithIndexDb {
     index: InMemoryDb<u64>,
 }
 
-const TOMBSTONE: &str = "🪦";
 const DIR_PATH: &str = "db_files/log_with_index_db/";
 const FILE_NAME: &str = "log.txt";
 
 impl KVDb for LogWithIndexDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        self.file.append_line(key, value).and_then(|offset| {
+        self.file.append_line(key, Some(value)).and_then(|offset| {
             self.index.set(key, &offset)
         })
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.file.append_line(key, TOMBSTONE).and_then(|_| {
+        self.file.append_line(key, None).and_then(|_| {
             self.index.delete(key)
         })
     }
@@ -38,10 +37,10 @@ impl LogWithIndexDb {
         let mut index = InMemoryDb::new();
         let file = KVFile::new(DIR_PATH, FILE_NAME);
         file.read_lines(&mut |parsed_key, parsed_value, offset| {
-            if parsed_value != TOMBSTONE {
-                return index.set(&parsed_key, &offset)
+            match parsed_value {
+                Some(_) => index.set(&parsed_key, &offset),
+                None => index.delete(&parsed_key),
             }
-            Ok(())
         }).and(Ok(LogWithIndexDb{
             file,
             index,
