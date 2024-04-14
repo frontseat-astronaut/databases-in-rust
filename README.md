@@ -4,7 +4,7 @@ Things implemented so far:
 - Log DB: Simplest DB that stores key, value pairs in a single file.
 - Log DB with Hash index: Same DB as above but with an in-memory index that stores file offset for each key.
 
-All the above only support setting a key-value and accessing it. I'm yet to implement deletion.
+All of the above are key-value stores that support set, get and delete.
 
 To build,
 ```
