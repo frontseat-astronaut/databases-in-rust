@@ -13,6 +13,10 @@ impl<T: KVDb> Test<T> {
 
     pub fn run(&mut self) {
         println!("starting test");
+        self.set_key_value_for_test("k,", "v");
+        self.get_value_for_test("k,");
+        self.set_key_value_for_test("k", "🪦");
+        self.get_value_for_test("k");
         self.get_value_for_test("k1");
         self.get_value_for_test("k2");
         self.set_key_value_for_test("k1", "v11");

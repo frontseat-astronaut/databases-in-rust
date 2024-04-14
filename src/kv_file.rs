@@ -124,7 +124,13 @@ impl KVFile {
     }
 
     fn write_line(&self, key: &str, value: Option<&str>) -> Result<(), Error> {
+        if key.contains(",") {
+            return Err(Error::new("key must not have comma"));
+        }
         let written_value = match value {
+            Some(TOMBSTONE) => {
+                return Err(Error::new(&format!("storing {} as a value is not supported", TOMBSTONE)))
+            }
             Some(value) => value,
             None => TOMBSTONE,
         };

@@ -8,7 +8,7 @@ pub struct Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "key-value db error: {}", self.msg)
+        write!(f, "{}", self.msg)
     }
 }
 
