@@ -1,14 +1,12 @@
 use super::KVDb;
 
 pub struct Test<T: KVDb> {
-    db: T 
+    db: T,
 }
 
 impl<T: KVDb> Test<T> {
     pub fn new(db: T) -> Test<T> {
-        Test {
-            db,
-        }
+        Test { db }
     }
 
     pub fn run(&mut self) {

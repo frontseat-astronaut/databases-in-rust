@@ -1,6 +1,7 @@
-use std::collections::HashMap;
 use crate::kvdb::{self, KVDb};
+use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct InMemoryDb<T: Clone> {
     map: HashMap<String, T>,
 }
@@ -27,14 +28,11 @@ impl<T: Clone> InMemoryDb<T> {
         Ok(())
     }
     pub fn get(&self, key: &str) -> Result<Option<T>, kvdb::error::Error> {
-        Ok(self.map.get(key).map(|value| {
-            value.clone()
-        }))
+        Ok(self.map.get(key).map(|value| value.clone()))
     }
     pub fn new() -> InMemoryDb<T> {
-        InMemoryDb{
+        InMemoryDb {
             map: HashMap::new(),
-        } 
+        }
     }
 }
-

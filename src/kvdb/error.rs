@@ -3,7 +3,7 @@ use std::io;
 
 #[derive(Debug)]
 pub struct Error {
-    msg: String
+    msg: String,
 }
 
 impl fmt::Display for Error {
@@ -19,8 +19,6 @@ impl Error {
         }
     }
     pub fn from_io_error(e: &io::Error) -> Error {
-        Error {
-            msg: e.to_string(),
-        }
+        Error { msg: e.to_string() }
     }
 }

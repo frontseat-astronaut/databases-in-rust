@@ -1,24 +1,24 @@
 use crate::kv_file::KVFile;
-use crate::{in_memory_db::InMemoryDb, kvdb::{error::Error, KVDb}};
+use crate::{
+    in_memory_db::InMemoryDb,
+    kvdb::{error::Error, KVDb},
+};
 
 pub struct LogWithIndexDb {
     file: KVFile,
     index: InMemoryDb<u64>,
 }
 
-const DIR_PATH: &str = "db_files/log_with_index_db/";
-const FILE_NAME: &str = "log.txt";
-
 impl KVDb for LogWithIndexDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        self.file.append_line(key, Some(value)).and_then(|offset| {
-            self.index.set(key, &offset)
-        })
+        self.file
+            .append_line(key, Some(value))
+            .and_then(|offset| self.index.set(key, &offset))
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.file.append_line(key, None).and_then(|_| {
-            self.index.delete(key)
-        })
+        self.file
+            .append_line(key, None)
+            .and_then(|_| self.index.delete(key))
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         match self.index.get(key) {
@@ -28,22 +28,18 @@ impl KVDb for LogWithIndexDb {
             }
             Ok(None) => Ok(None),
             Err(e) => Err(e),
-        } 
+        }
     }
 }
 
 impl LogWithIndexDb {
-    pub fn new() -> Result<LogWithIndexDb, Error> {
+    pub fn new(dir_path: &str, file_name: &str) -> Result<LogWithIndexDb, Error> {
         let mut index = InMemoryDb::new();
-        let file = KVFile::new(DIR_PATH, FILE_NAME);
-        file.read_lines(&mut |parsed_key, parsed_value, offset| {
-            match parsed_value {
-                Some(_) => index.set(&parsed_key, &offset),
-                None => index.delete(&parsed_key),
-            }
-        }).and(Ok(LogWithIndexDb{
-            file,
-            index,
-        }))
+        let file = KVFile::new(dir_path, file_name);
+        file.read_lines(&mut |parsed_key, parsed_value, offset| match parsed_value {
+            Some(_) => index.set(&parsed_key, &offset),
+            None => index.delete(&parsed_key),
+        })
+        .and(Ok(LogWithIndexDb { file, index }))
     }
 }
