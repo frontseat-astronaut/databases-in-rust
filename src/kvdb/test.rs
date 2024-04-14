@@ -18,6 +18,9 @@ impl<T: KVDb> Test<T> {
         self.get_value_for_test("k1");
         self.set_key_value_for_test("k1", "v12");
         self.get_value_for_test("k1");
+        self.set_key_value_for_test("k2", "v21");
+        self.get_value_for_test("k2");
+        self.delete_key_value_for_test("k2");
         self.get_value_for_test("k2");
         println!("");
     }
@@ -29,6 +32,16 @@ impl<T: KVDb> Test<T> {
             }
             Err(e) => {
                 println!("error setting value for key {}: {}", key, e)
+            }
+        }
+    }
+    fn delete_key_value_for_test(&mut self, key: &str) {
+        match self.db.delete(key) {
+            Ok(()) => {
+                println!("deleted key {} successfully", key)
+            }
+            Err(e) => {
+                println!("error deleting key {}: {}", key, e)
             }
         }
     }

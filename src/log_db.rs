@@ -5,6 +5,7 @@ pub struct LogDb {
     file: KVFile
 }
 
+const TOMBSTONE: &str = "🪦";
 const DIR_PATH: &str = "db_files/log_db/";
 const FILE_NAME: &str = "log.txt";
 
@@ -13,11 +14,19 @@ impl KVDb for LogDb {
         self.file.append_line(key, value).and(Ok(()))
     }
 
+    fn delete(&mut self, key: &str) -> Result<(), Error> {
+        self.file.append_line(key, TOMBSTONE).and(Ok(()))
+    }
+
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut value = None;
         self.file.read_lines(&mut |parsed_key, parsed_value, _| {
             if parsed_key == key {
-                value = Some(parsed_value);
+                if parsed_value == TOMBSTONE {
+                    value = None;
+                } else {
+                    value = Some(parsed_value);
+                }
             }
             Ok(())
         }).and(Ok(value))
