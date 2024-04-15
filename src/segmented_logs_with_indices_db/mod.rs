@@ -8,6 +8,7 @@ use self::segment::{
 
 mod segment;
 
+// TODO implement compaction
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
