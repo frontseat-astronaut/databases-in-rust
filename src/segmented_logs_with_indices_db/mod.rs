@@ -66,14 +66,30 @@ impl SegmentedLogsWithIndicesDb {
             return Err(Error::from_io_error(&e));
         }
 
+        let process_dir_entry = |dir_entry: &DirEntry| {
+            let path = dir_entry.path();
+            if path.is_file() {
+                if let Some(stem) = path.file_stem() {
+                    if let Some(stem_str) = stem.to_str() {
+                        if let Ok(segment_index) = stem_str.parse::<u64>() {
+                            return Some(Segment::new(
+                                dir_path,
+                                segment_index,
+                                max_segment_records,
+                            ));
+                        }
+                    }
+                }
+            }
+            None
+        };
+
         match read_dir(dir_path) {
             Ok(contents) => {
                 for dir_entry_result in contents {
                     match dir_entry_result {
                         Ok(dir_entry) => {
-                            if let Some(segment_result) =
-                                Self::new_segment_from_dir_entry(dir_path, &dir_entry)
-                            {
+                            if let Some(segment_result) = process_dir_entry(&dir_entry) {
                                 match segment_result {
                                     Ok(segment) => segments.push(segment),
                                     Err(e) => return Err(e),
@@ -91,7 +107,7 @@ impl SegmentedLogsWithIndicesDb {
 
         let current_segment = match segments.pop() {
             Some(segment) => segment,
-            None => match Segment::new(dir_path, 0) {
+            None => match Segment::new(dir_path, 0, max_segment_records) {
                 Ok(segment) => segment,
                 Err(e) => return Err(e),
             },
@@ -106,32 +122,17 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
-        self.current_segment.count_lines().and_then(|count| {
-            if count >= self.max_segment_records {
+        self.current_segment.is_full().and_then(|is_full| {
+            if is_full {
                 let segment_index = self.current_segment.segment_index + 1;
                 self.past_segments.push(self.current_segment.clone());
-                self.current_segment = match Segment::new(&self.dir_path, segment_index) {
-                    Ok(segment) => segment,
-                    Err(e) => return Err(e),
-                }
+                self.current_segment =
+                    match Segment::new(&self.dir_path, segment_index, self.max_segment_records) {
+                        Ok(segment) => segment,
+                        Err(e) => return Err(e),
+                    }
             }
             Ok(())
         })
-    }
-    fn new_segment_from_dir_entry(
-        dir_path: &str,
-        dir_entry: &DirEntry,
-    ) -> Option<Result<Segment, Error>> {
-        let path = dir_entry.path();
-        if path.is_file() {
-            if let Some(stem) = path.file_stem() {
-                if let Some(stem_str) = stem.to_str() {
-                    if let Ok(segment_index) = stem_str.parse::<u64>() {
-                        return Some(Segment::new(dir_path, segment_index));
-                    }
-                }
-            }
-        }
-        None
     }
 }

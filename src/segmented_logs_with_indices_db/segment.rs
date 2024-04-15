@@ -9,13 +9,14 @@ pub enum KVEntry<T: Clone> {
 
 #[derive(Clone)]
 pub struct Segment {
+    max_records: u64,
     file: KVFile,
     index: InMemoryDb<KVEntry<u64>>,
     pub segment_index: u64,
 }
 
 impl Segment {
-    pub fn new(dir_path: &str, segment_index: u64) -> Result<Segment, Error> {
+    pub fn new(dir_path: &str, segment_index: u64, max_records: u64) -> Result<Segment, Error> {
         let file_name = Self::get_file_name(segment_index);
         let file = KVFile::new(dir_path, &file_name);
         let mut index = InMemoryDb::new();
@@ -25,13 +26,16 @@ impl Segment {
             None => index.set(&key, &Deleted),
         })
         .and(Ok(Segment {
+            max_records,
             file,
             index,
             segment_index,
         }))
     }
-    pub fn count_lines(&self) -> Result<u64, Error> {
-        self.file.count_lines()
+    pub fn is_full(&self) -> Result<bool, Error> {
+        self.file
+            .count_lines()
+            .and_then(|count| Ok(count >= self.max_records))
     }
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
