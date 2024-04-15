@@ -1,5 +1,5 @@
 use crate::kvdb::{error::Error, KVDb};
-use std::fs::{self, read_dir};
+use std::fs::{self, read_dir, DirEntry};
 
 use self::segment::{
     KVEntry::{Deleted, Present},
@@ -71,18 +71,12 @@ impl SegmentedLogsWithIndicesDb {
                 for dir_entry_result in contents {
                     match dir_entry_result {
                         Ok(dir_entry) => {
-                            let path = dir_entry.path();
-                            if !path.is_file() {
-                                continue;
-                            }
-                            if let Some(stem) = path.file_stem() {
-                                if let Some(stem_str) = stem.to_str() {
-                                    if let Ok(segment_index) = stem_str.parse::<u64>() {
-                                        match Segment::new(dir_path, segment_index) {
-                                            Ok(segment) => segments.push(segment),
-                                            Err(e) => return Err(e),
-                                        }
-                                    }
+                            if let Some(segment_result) =
+                                Self::new_segment_from_dir_entry(dir_path, &dir_entry)
+                            {
+                                match segment_result {
+                                    Ok(segment) => segments.push(segment),
+                                    Err(e) => return Err(e),
                                 }
                             }
                         }
@@ -123,5 +117,21 @@ impl SegmentedLogsWithIndicesDb {
             }
             Ok(())
         })
+    }
+    fn new_segment_from_dir_entry(
+        dir_path: &str,
+        dir_entry: &DirEntry,
+    ) -> Option<Result<Segment, Error>> {
+        let path = dir_entry.path();
+        if path.is_file() {
+            if let Some(stem) = path.file_stem() {
+                if let Some(stem_str) = stem.to_str() {
+                    if let Ok(segment_index) = stem_str.parse::<u64>() {
+                        return Some(Segment::new(dir_path, segment_index));
+                    }
+                }
+            }
+        }
+        None
     }
 }
