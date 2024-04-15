@@ -27,8 +27,7 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut result = Ok(None);
-        // TODO: refactor this
-        let mut check = |segment: &Segment| -> bool {
+        let mut contains_key = |segment: &Segment| -> bool {
             match segment.get(key) {
                 Ok(None) => false,
                 Ok(Some(Deleted)) => {
@@ -45,9 +44,9 @@ impl KVDb for SegmentedLogsWithIndicesDb {
                 }
             }
         };
-        if !check(&self.current_segment) {
+        if !contains_key(&self.current_segment) {
             for segment in self.past_segments.iter().rev() {
-                if check(&segment) {
+                if contains_key(&segment) {
                     break;
                 }
             }
