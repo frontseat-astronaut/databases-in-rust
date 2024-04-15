@@ -60,40 +60,34 @@ impl SegmentedLogsWithIndicesDb {
         dir_path: &str,
         max_segment_records: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
-        let mut segments = vec![];
-
         if let Err(e) = fs::create_dir_all(dir_path) {
             return Err(Error::from_io_error(&e));
         }
 
-        let process_dir_entry = |dir_entry: &DirEntry| {
+        let mut segments = vec![];
+        let mut process_dir_entry = |dir_entry: &DirEntry| {
             let path = dir_entry.path();
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     if let Some(stem_str) = stem.to_str() {
                         if let Ok(segment_index) = stem_str.parse::<u64>() {
-                            return Some(Segment::new(
-                                dir_path,
-                                segment_index,
-                                max_segment_records,
-                            ));
+                            match Segment::new(dir_path, segment_index, max_segment_records) {
+                                Ok(segment) => segments.push(segment),
+                                Err(e) => return Err(e),
+                            };
                         }
                     }
                 }
             }
-            None
+            Ok(())
         };
-
         match read_dir(dir_path) {
             Ok(contents) => {
                 for dir_entry_result in contents {
                     match dir_entry_result {
                         Ok(dir_entry) => {
-                            if let Some(segment_result) = process_dir_entry(&dir_entry) {
-                                match segment_result {
-                                    Ok(segment) => segments.push(segment),
-                                    Err(e) => return Err(e),
-                                }
+                            if let Err(e) = process_dir_entry(&dir_entry) {
+                                return Err(e);
                             }
                         }
                         Err(e) => return Err(Error::from_io_error(&e)),
