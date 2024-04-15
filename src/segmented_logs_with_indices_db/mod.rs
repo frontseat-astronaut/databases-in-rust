@@ -27,26 +27,24 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut result = Ok(None);
-        let mut contains_key = |segment: &Segment| -> bool {
-            match segment.get(key) {
-                Ok(None) => false,
-                Ok(Some(Deleted)) => {
-                    result = Ok(None);
-                    true
-                }
-                Ok(Some(Present(value))) => {
-                    result = Ok(Some(value));
-                    true
-                }
-                Err(e) => {
-                    result = Err(e);
-                    false
-                }
+        let mut check_segment = |segment: &Segment| match segment.get(key) {
+            Ok(None) => false,
+            Ok(Some(Deleted)) => {
+                result = Ok(None);
+                true
+            }
+            Ok(Some(Present(value))) => {
+                result = Ok(Some(value));
+                true
+            }
+            Err(e) => {
+                result = Err(e);
+                true
             }
         };
-        if !contains_key(&self.current_segment) {
+        if !check_segment(&self.current_segment) {
             for segment in self.past_segments.iter().rev() {
-                if contains_key(&segment) {
+                if check_segment(&segment) {
                     break;
                 }
             }
