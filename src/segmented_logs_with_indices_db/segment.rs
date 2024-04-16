@@ -21,9 +21,12 @@ impl Segment {
         let file = KVFile::new(dir_path, &file_name);
         let mut index = InMemoryDb::new();
 
-        file.read_lines(&mut |key, maybe_value, offset| match maybe_value {
-            Some(_) => index.set(&key, &Present(offset)),
-            None => index.set(&key, &Deleted),
+        file.read_lines(&mut |key, maybe_value, offset| {
+            match maybe_value {
+                Some(_) => index.set(&key, &Present(offset)),
+                None => index.set(&key, &Deleted),
+            };
+            Ok(())
         })
         .and(Ok(Segment {
             max_records,
@@ -40,24 +43,22 @@ impl Segment {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
             .append_line(key, Some(value))
-            .and_then(|offset| self.index.set(key, &Present(offset)))
+            .and_then(|offset| Ok(self.index.set(key, &Present(offset))))
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.file
             .append_line(key, None)
-            .and_then(|_| self.index.set(key, &Deleted))
+            .and_then(|_| Ok(self.index.set(key, &Deleted)))
     }
     pub fn get(&self, key: &str) -> Result<Option<KVEntry<String>>, Error> {
-        self.index
-            .get(key)
-            .and_then(|maybe_entry| match maybe_entry {
-                Some(Present(offset)) => self
-                    .file
-                    .get_at_offset(offset)
-                    .and_then(|maybe_value| Ok(maybe_value.and_then(|value| Some(Present(value))))),
-                Some(Deleted) => Ok(Some(Deleted)),
-                None => Ok(None),
-            })
+        match self.index.get(key) {
+            Some(Present(offset)) => self
+                .file
+                .get_at_offset(offset)
+                .and_then(|maybe_value| Ok(maybe_value.and_then(|value| Some(Present(value))))),
+            Some(Deleted) => Ok(Some(Deleted)),
+            None => Ok(None),
+        }
     }
 
     fn get_file_name(index: u64) -> String {
