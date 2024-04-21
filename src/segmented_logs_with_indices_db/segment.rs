@@ -7,7 +7,6 @@ pub enum KVEntry<T: Clone> {
     Present(T),
 }
 
-#[derive(Clone)]
 pub struct Chunk {
     max_records: u64,
     file: KVFile,
@@ -75,7 +74,6 @@ impl Chunk {
     }
 }
 
-#[derive(Clone)]
 pub struct Segment {
     pub chunk: Chunk,
     pub id: usize,

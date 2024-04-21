@@ -1,7 +1,6 @@
 use crate::kvdb::{self, KVDb};
 use std::collections::HashMap;
 
-#[derive(Clone)]
 pub struct InMemoryDb<T: Clone> {
     map: HashMap<String, T>,
 }

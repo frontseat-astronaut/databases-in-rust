@@ -6,7 +6,6 @@ use crate::kvdb::error::Error;
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
 
-#[derive(Clone)]
 pub struct KVFile {
     dir_path: String,
     file_name: String,
