@@ -57,7 +57,6 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     }
 }
 
-// TODO: do error handling
 impl SegmentedLogsWithIndicesDb {
     pub fn new(
         dir_path: &str,
