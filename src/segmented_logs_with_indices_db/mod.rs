@@ -129,17 +129,23 @@ impl SegmentedLogsWithIndicesDb {
                     };
                 swap(&mut self.current_segment, &mut new_past_segment);
                 self.past_segments.push(new_past_segment);
-            }
 
-            if let Err(e) = self.do_compaction() {
-                return Err(e);
+                // TODO: do this in a background process instead
+                if let Err(e) = self.do_compaction() {
+                    return Err(e);
+                }
             }
 
             Ok(())
         })
     }
 
+    // TODO: handle errors
     fn do_compaction(&mut self) -> Result<(), Error> {
+        if self.past_segments.is_empty() {
+            return Ok(());
+        }
+
         let mut tmp_chunks = vec![];
         let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
             let fresh_chunk = Chunk::new(
@@ -188,6 +194,6 @@ impl SegmentedLogsWithIndicesDb {
             segment_id += 1;
         }
 
-        Ok(())
+        self.current_segment.change_id(segment_id)
     }
 }

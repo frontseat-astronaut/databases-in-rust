@@ -91,6 +91,14 @@ impl Segment {
         chunk.rename_file(&file_name).and(Ok(Segment { chunk, id }))
     }
 
+    pub fn change_id(&mut self, new_id: usize) -> Result<(), Error> {
+        let file_name = Self::get_file_name(new_id);
+        self.chunk.rename_file(&file_name).and_then(|_| {
+            self.id = new_id;
+            Ok(())
+        })
+    }
+
     fn get_file_name(id: usize) -> String {
         format!("{}.txt", id)
     }
