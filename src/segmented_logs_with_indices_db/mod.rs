@@ -140,7 +140,6 @@ impl SegmentedLogsWithIndicesDb {
         })
     }
 
-    // TODO: handle errors
     fn do_compaction(&mut self) -> Result<(), Error> {
         if self.past_segments.is_empty() {
             return Ok(());
@@ -148,15 +147,19 @@ impl SegmentedLogsWithIndicesDb {
 
         let mut tmp_chunks = vec![];
         let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
-            let fresh_chunk = Chunk::new(
+            Chunk::new(
                 &self.dir_path,
                 &format!("tmp{}.txt", tmp_chunks.len()),
                 self.max_segment_records,
             )
-            .unwrap();
-            tmp_chunks.push(fresh_chunk);
+            .and_then(|fresh_chunk| {
+                tmp_chunks.push(fresh_chunk);
+                Ok(())
+            })
         };
-        add_fresh_chunk(&mut tmp_chunks);
+        if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
+            return Err(e);
+        }
 
         let mut keys_set = HashSet::new();
         for segment in self.past_segments.iter().rev() {
@@ -170,8 +173,14 @@ impl SegmentedLogsWithIndicesDb {
                             if let Err(e) = current_chunk.add_entry(key, &entry) {
                                 return Err(e);
                             }
-                            if current_chunk.is_full().unwrap() {
-                                add_fresh_chunk(&mut tmp_chunks);
+                            match current_chunk.is_full() {
+                                Ok(true) => {
+                                    if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
+                                        return Err(e);
+                                    }
+                                }
+                                Ok(false) => {}
+                                Err(e) => return Err(e),
                             }
                         }
                         Ok(None) => {}
@@ -183,14 +192,18 @@ impl SegmentedLogsWithIndicesDb {
 
         while !self.past_segments.is_empty() {
             let segment = self.past_segments.pop().unwrap();
-            segment.chunk.delete_file().unwrap();
+            if let Err(e) = segment.chunk.delete_file() {
+                return Err(e);
+            }
         }
 
         let mut segment_id = 0;
         while !tmp_chunks.is_empty() {
             let tmp_chunk = tmp_chunks.pop().unwrap();
-            let segment = Segment::from_chunk(tmp_chunk, segment_id).unwrap();
-            self.past_segments.push(segment);
+            match Segment::from_chunk(tmp_chunk, segment_id) {
+                Ok(segment) => self.past_segments.push(segment),
+                Err(e) => return Err(e),
+            }
             segment_id += 1;
         }
 

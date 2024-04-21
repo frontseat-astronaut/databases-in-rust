@@ -65,7 +65,6 @@ impl KVFile {
 
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
         self.open_file().and_then(|mut file| {
-            // move file pointer
             if let Err(e) = file.seek(SeekFrom::Start(offset)) {
                 return Err(Error::from_io_error(&e));
             }
