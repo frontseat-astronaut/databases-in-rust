@@ -2,6 +2,7 @@ use crate::kvdb::{error::Error, KVDb};
 use std::{
     collections::HashSet,
     fs::{self, read_dir, DirEntry},
+    mem::swap,
 };
 
 use self::segment::{
@@ -121,12 +122,13 @@ impl SegmentedLogsWithIndicesDb {
         self.current_segment.chunk.is_full().and_then(|is_full| {
             if is_full {
                 let id = self.current_segment.id + 1;
-                self.past_segments.push(self.current_segment.clone());
-                self.current_segment =
+                let mut new_past_segment =
                     match Segment::new(&self.dir_path, id, self.max_segment_records) {
                         Ok(segment) => segment,
                         Err(e) => return Err(e),
                     };
+                swap(&mut self.current_segment, &mut new_past_segment);
+                self.past_segments.push(new_past_segment);
             }
 
             if let Err(e) = self.do_compaction() {
