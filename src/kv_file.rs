@@ -82,7 +82,7 @@ impl KVFile {
         if let Err(e) = fs::create_dir_all(&self.dir_path) {
             return Err(Error::from_io_error(&e));
         }
-        let file_path = self.dir_path.to_owned() + self.file_name.as_str();
+        let file_path = get_file_path(&self.dir_path, &self.file_name);
         OpenOptions::new()
             .read(true)
             .write(true)
@@ -140,4 +140,20 @@ impl KVFile {
             Ok(())
         })
     }
+
+    pub fn delete(self) -> Result<(), Error> {
+        let file_path = get_file_path(&self.dir_path, &self.file_name);
+        fs::remove_file(file_path).map_err(|e| Error::from_io_error(&e))
+    }
+
+    pub fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
+        let old_file_path = get_file_path(&self.dir_path, &self.file_name);
+        let new_file_path = get_file_path(&self.dir_path, new_file_name);
+        self.file_name = new_file_name.to_owned();
+        fs::rename(old_file_path, new_file_path).map_err(|e| Error::from_io_error(&e))
+    }
+}
+
+fn get_file_path(dir_path: &str, file_name: &str) -> String {
+    dir_path.to_owned() + file_name
 }

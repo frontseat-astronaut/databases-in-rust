@@ -1,4 +1,6 @@
 use super::KVDb;
+use rand;
+use rand::Rng;
 
 pub struct Test<T: KVDb> {
     db: T,
@@ -25,9 +27,16 @@ impl<T: KVDb> Test<T> {
         self.get_value_for_test("k2");
         self.delete_key_value_for_test("k2");
         self.get_value_for_test("k2");
+        self.set_random_value_for_test("k3");
+        self.get_value_for_test("k3");
+        self.set_random_value_for_test("k4");
+        self.get_value_for_test("k4");
         println!("");
     }
 
+    fn set_random_value_for_test(&mut self, key: &str) {
+        self.set_key_value_for_test(key, &Self::create_random_value())
+    }
     fn set_key_value_for_test(&mut self, key: &str, value: &str) {
         match self.db.set(key, value) {
             Ok(()) => {
@@ -60,5 +69,9 @@ impl<T: KVDb> Test<T> {
                 println!("error getting value for key {}: {}", key, e)
             }
         }
+    }
+
+    fn create_random_value() -> String {
+        format!("{}", rand::thread_rng().gen_range(1..100000))
     }
 }

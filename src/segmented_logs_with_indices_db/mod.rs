@@ -1,14 +1,17 @@
 use crate::kvdb::{error::Error, KVDb};
-use std::fs::{self, read_dir, DirEntry};
+use std::{
+    collections::HashSet,
+    fs::{self, read_dir, DirEntry},
+};
 
 use self::segment::{
+    Chunk,
     KVEntry::{Deleted, Present},
     Segment,
 };
 
 mod segment;
 
-// TODO implement compaction
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
@@ -19,15 +22,15 @@ pub struct SegmentedLogsWithIndicesDb {
 impl KVDb for SegmentedLogsWithIndicesDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.create_new_segment_if_current_full()
-            .and_then(|_| self.current_segment.set(key, value))
+            .and_then(|_| self.current_segment.chunk.set(key, value))
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.create_new_segment_if_current_full()
-            .and_then(|_| self.current_segment.delete(key))
+            .and_then(|_| self.current_segment.chunk.delete(key))
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut result = Ok(None);
-        let mut check_segment = |segment: &Segment| match segment.get(key) {
+        let mut check_segment = |segment: &Segment| match segment.chunk.get(key) {
             Ok(None) => false,
             Ok(Some(Deleted)) => {
                 result = Ok(None);
@@ -53,6 +56,7 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     }
 }
 
+// TODO: do error handling
 impl SegmentedLogsWithIndicesDb {
     pub fn new(
         dir_path: &str,
@@ -68,8 +72,8 @@ impl SegmentedLogsWithIndicesDb {
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     if let Some(stem_str) = stem.to_str() {
-                        if let Ok(segment_index) = stem_str.parse::<u64>() {
-                            match Segment::new(dir_path, segment_index, max_segment_records) {
+                        if let Ok(id) = stem_str.parse::<usize>() {
+                            match Segment::new(dir_path, id, max_segment_records) {
                                 Ok(segment) => segments.push(segment),
                                 Err(e) => return Err(e),
                             };
@@ -95,7 +99,7 @@ impl SegmentedLogsWithIndicesDb {
             Err(e) => return Err(Error::from_io_error(&e)),
         };
 
-        segments.sort_by_key(|segment| segment.segment_index);
+        segments.sort_by_key(|segment| segment.id);
 
         let current_segment = match segments.pop() {
             Some(segment) => segment,
@@ -114,17 +118,74 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
-        self.current_segment.is_full().and_then(|is_full| {
+        self.current_segment.chunk.is_full().and_then(|is_full| {
             if is_full {
-                let segment_index = self.current_segment.segment_index + 1;
+                let id = self.current_segment.id + 1;
                 self.past_segments.push(self.current_segment.clone());
                 self.current_segment =
-                    match Segment::new(&self.dir_path, segment_index, self.max_segment_records) {
+                    match Segment::new(&self.dir_path, id, self.max_segment_records) {
                         Ok(segment) => segment,
                         Err(e) => return Err(e),
-                    }
+                    };
             }
+
+            if let Err(e) = self.do_compaction() {
+                return Err(e);
+            }
+
             Ok(())
         })
+    }
+
+    fn do_compaction(&mut self) -> Result<(), Error> {
+        let mut tmp_chunks = vec![];
+        let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
+            let fresh_chunk = Chunk::new(
+                &self.dir_path,
+                &format!("tmp{}.txt", tmp_chunks.len()),
+                self.max_segment_records,
+            )
+            .unwrap();
+            tmp_chunks.push(fresh_chunk);
+        };
+        add_fresh_chunk(&mut tmp_chunks);
+
+        let mut keys_set = HashSet::new();
+        for segment in self.past_segments.iter().rev() {
+            for key in segment.chunk.index.keys() {
+                if !keys_set.contains(key) {
+                    keys_set.insert(key.to_string());
+
+                    match segment.chunk.get(key) {
+                        Ok(Some(entry)) => {
+                            let current_chunk = tmp_chunks.last_mut().unwrap();
+                            if let Err(e) = current_chunk.add_entry(key, &entry) {
+                                return Err(e);
+                            }
+                            if current_chunk.is_full().unwrap() {
+                                add_fresh_chunk(&mut tmp_chunks);
+                            }
+                        }
+                        Ok(None) => {}
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+
+        while !self.past_segments.is_empty() {
+            let segment = self.past_segments.pop().unwrap();
+            segment.chunk.delete_file().unwrap();
+        }
+
+        let mut segment_id = 0;
+        while !tmp_chunks.is_empty() {
+            let tmp_chunk = tmp_chunks.pop().unwrap();
+            let segment = Segment::from_chunk(tmp_chunk, segment_id).unwrap();
+            self.past_segments.push(segment);
+            segment_id += 1;
+        }
+
+        Ok(())
     }
 }

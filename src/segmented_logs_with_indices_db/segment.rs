@@ -8,16 +8,14 @@ pub enum KVEntry<T: Clone> {
 }
 
 #[derive(Clone)]
-pub struct Segment {
+pub struct Chunk {
     max_records: u64,
     file: KVFile,
-    index: InMemoryDb<KVEntry<u64>>,
-    pub segment_index: u64,
+    pub index: InMemoryDb<KVEntry<u64>>,
 }
 
-impl Segment {
-    pub fn new(dir_path: &str, segment_index: u64, max_records: u64) -> Result<Segment, Error> {
-        let file_name = Self::get_file_name(segment_index);
+impl Chunk {
+    pub fn new(dir_path: &str, file_name: &str, max_records: u64) -> Result<Chunk, Error> {
         let file = KVFile::new(dir_path, &file_name);
         let mut index = InMemoryDb::new();
 
@@ -28,17 +26,16 @@ impl Segment {
             };
             Ok(())
         })
-        .and(Ok(Segment {
+        .and(Ok(Chunk {
             max_records,
             file,
             index,
-            segment_index,
         }))
     }
     pub fn is_full(&self) -> Result<bool, Error> {
         self.file
             .count_lines()
-            .and_then(|count| Ok(count >= self.max_records))
+            .and_then(|count| Ok(self.is_count_full(count)))
     }
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
@@ -60,8 +57,41 @@ impl Segment {
             None => Ok(None),
         }
     }
+    pub fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
+        match entry {
+            Present(value) => self.set(key, value),
+            Deleted => self.delete(key),
+        }
+    }
+    pub fn delete_file(self) -> Result<(), Error> {
+        self.file.delete()
+    }
+    pub fn rename_file(&mut self, new_file_name: &str) -> Result<(), Error> {
+        self.file.rename(new_file_name)
+    }
 
-    fn get_file_name(index: u64) -> String {
-        format!("{}.txt", index)
+    fn is_count_full(&self, count: u64) -> bool {
+        count >= self.max_records
+    }
+}
+
+#[derive(Clone)]
+pub struct Segment {
+    pub chunk: Chunk,
+    pub id: usize,
+}
+
+impl Segment {
+    pub fn new(dir_path: &str, id: usize, max_records: u64) -> Result<Segment, Error> {
+        let file_name = Self::get_file_name(id);
+        Chunk::new(dir_path, &file_name, max_records).map(|chunk| Segment { chunk, id })
+    }
+    pub fn from_chunk(mut chunk: Chunk, id: usize) -> Result<Segment, Error> {
+        let file_name = Self::get_file_name(id);
+        chunk.rename_file(&file_name).and(Ok(Segment { chunk, id }))
+    }
+
+    fn get_file_name(id: usize) -> String {
+        format!("{}.txt", id)
     }
 }

@@ -22,10 +22,7 @@ impl KVDb for LogWithIndexDb {
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         match self.index.get(key) {
-            Some(offset) => {
-                println!("[log] found offset {} for key {} in index", offset, key);
-                self.file.get_at_offset(offset)
-            }
+            Some(offset) => self.file.get_at_offset(offset),
             None => Ok(None),
         }
     }
