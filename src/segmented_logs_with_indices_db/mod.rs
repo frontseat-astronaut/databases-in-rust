@@ -19,6 +19,7 @@ mod segment;
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
+    compaction_threshold: u64,
     past_segments: Arc<RwLock<Vec<Segment>>>,
     current_segment: Arc<RwLock<Segment>>,
     compaction_thread_join_handle: Option<JoinHandle<()>>,
@@ -81,6 +82,7 @@ impl SegmentedLogsWithIndicesDb {
     pub fn new(
         dir_path: &str,
         max_segment_records: u64,
+        compaction_threshold: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
         if let Err(e) = fs::create_dir_all(dir_path) {
             return Err(Error::from_io_error(&e));
@@ -132,6 +134,7 @@ impl SegmentedLogsWithIndicesDb {
         Ok(SegmentedLogsWithIndicesDb {
             dir_path: dir_path.to_string(),
             max_segment_records,
+            compaction_threshold,
             past_segments: Arc::new(RwLock::new(segments)),
             current_segment: Arc::new(RwLock::new(current_segment)),
             compaction_thread_join_handle: None,
@@ -155,12 +158,12 @@ impl SegmentedLogsWithIndicesDb {
                             past_segments.push(past_segment);
                         }
 
-                        Ok(is_full)
+                        Ok(u64::try_from(past_segments.len()).unwrap() > self.compaction_threshold)
                     })
                 })
             })
-            .and_then(|new_segment_created| {
-                if new_segment_created {
+            .and_then(|should_compact| {
+                if should_compact {
                     self.run_compaction_in_background();
                 }
                 Ok(())
