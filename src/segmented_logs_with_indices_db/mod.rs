@@ -168,7 +168,7 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn run_compaction_in_background(&mut self) {
-        if !self.compaction_thread_join_handle.is_none() {
+        if self.compaction_thread_join_handle.is_some() {
             return;
         }
 
