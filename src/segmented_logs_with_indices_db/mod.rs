@@ -164,13 +164,13 @@ impl SegmentedLogsWithIndicesDb {
             })
             .and_then(|should_compact| {
                 if should_compact {
-                    self.do_compaction_in_background();
+                    self.run_compaction_in_background();
                 }
                 Ok(())
             })
     }
 
-    fn do_compaction_in_background(&mut self) {
+    fn run_compaction_in_background(&mut self) {
         if self.compaction_thread_join_handle.is_some() {
             return;
         }
@@ -253,8 +253,8 @@ impl SegmentedLogsWithIndicesDb {
             Err(e) => return Err(e),
         }
 
-        Self::write_locked(&past_segments).and_then(|mut past_segments| {
-            Self::write_locked(&current_segment).and_then(|mut current_segment| {
+        Self::write_locked(&past_segments)
+            .and_then(|mut past_segments| {
                 while !past_segments.is_empty() {
                     let segment = past_segments.pop().unwrap();
                     if let Err(e) = segment.chunk.delete_file() {
@@ -272,9 +272,13 @@ impl SegmentedLogsWithIndicesDb {
                     segment_id += 1;
                 }
 
-                current_segment.change_id(segment_id)
+                Ok(segment_id)
             })
-        })
+            .and_then(|new_current_segment_id| {
+                Self::write_locked(&current_segment).and_then(|mut current_segment| {
+                    current_segment.change_id(new_current_segment_id)
+                })
+            })
     }
 
     fn read_locked<'a, T>(
