@@ -1,8 +1,11 @@
 use crate::kvdb::{error::Error, KVDb};
 use std::{
+    borrow::Borrow,
     collections::HashSet,
     fs::{self, read_dir, DirEntry},
-    mem::swap,
+    mem::replace,
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    thread::{spawn, JoinHandle},
 };
 
 use self::segment::{
@@ -16,44 +19,61 @@ mod segment;
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
-    past_segments: Vec<Segment>,
-    current_segment: Segment,
+    past_segments: Arc<RwLock<Vec<Segment>>>,
+    current_segment: Arc<RwLock<Segment>>,
+    compaction_thread_join_handle: Option<JoinHandle<()>>,
 }
 
 impl KVDb for SegmentedLogsWithIndicesDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        self.create_new_segment_if_current_full()
-            .and_then(|_| self.current_segment.chunk.set(key, value))
+        self.create_new_segment_if_current_full().and_then(|_| {
+            Self::write_locked(&self.current_segment)
+                .and_then(|mut current_segment| current_segment.chunk.set(key, value))
+        })
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.create_new_segment_if_current_full()
-            .and_then(|_| self.current_segment.chunk.delete(key))
+        self.create_new_segment_if_current_full().and_then(|_| {
+            Self::write_locked(&self.current_segment)
+                .and_then(|mut current_segment| current_segment.chunk.delete(key))
+        })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        let mut result = Ok(None);
-        let mut check_segment = |segment: &Segment| match segment.chunk.get(key) {
-            Ok(None) => false,
-            Ok(Some(Deleted)) => {
-                result = Ok(None);
-                true
-            }
-            Ok(Some(Present(value))) => {
-                result = Ok(Some(value));
-                true
-            }
-            Err(e) => {
-                result = Err(e);
-                true
-            }
-        };
-        if !check_segment(&self.current_segment) {
-            for segment in self.past_segments.iter().rev() {
-                if check_segment(&segment) {
-                    break;
+        Self::read_locked(&self.current_segment).and_then(|current_segment| {
+            Self::read_locked(&self.past_segments).and_then(|past_segments| {
+                let mut result = Ok(None);
+                let mut check_segment = |segment: &Segment| match segment.chunk.get(key) {
+                    Ok(None) => false,
+                    Ok(Some(Deleted)) => {
+                        result = Ok(None);
+                        true
+                    }
+                    Ok(Some(Present(value))) => {
+                        result = Ok(Some(value));
+                        true
+                    }
+                    Err(e) => {
+                        result = Err(e);
+                        true
+                    }
+                };
+                if !check_segment(&current_segment) {
+                    for segment in past_segments.iter().rev() {
+                        if check_segment(segment) {
+                            break;
+                        }
+                    }
                 }
-            }
+                result
+            })
+        })
+    }
+}
+
+impl Drop for SegmentedLogsWithIndicesDb {
+    fn drop(&mut self) {
+        if let Some(handle) = self.compaction_thread_join_handle.take() {
+            let _ = handle.join();
         }
-        result
     }
 }
 
@@ -112,44 +132,76 @@ impl SegmentedLogsWithIndicesDb {
         Ok(SegmentedLogsWithIndicesDb {
             dir_path: dir_path.to_string(),
             max_segment_records,
-            past_segments: segments,
-            current_segment,
+            past_segments: Arc::new(RwLock::new(segments)),
+            current_segment: Arc::new(RwLock::new(current_segment)),
+            compaction_thread_join_handle: None,
         })
     }
 
     fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
-        self.current_segment.chunk.is_full().and_then(|is_full| {
-            if is_full {
-                let id = self.current_segment.id + 1;
-                let mut new_past_segment =
-                    match Segment::new(&self.dir_path, id, self.max_segment_records) {
-                        Ok(segment) => segment,
-                        Err(e) => return Err(e),
-                    };
-                swap(&mut self.current_segment, &mut new_past_segment);
-                self.past_segments.push(new_past_segment);
+        Self::write_locked(&self.past_segments)
+            .and_then(|mut past_segments| {
+                Self::write_locked(&self.current_segment).and_then(|mut current_segment| {
+                    current_segment.chunk.is_full().and_then(|is_full| {
+                        if is_full {
+                            let id = current_segment.id + 1;
+                            let past_segment = replace(
+                                &mut (*current_segment),
+                                match Segment::new(&self.dir_path, id, self.max_segment_records) {
+                                    Ok(segment) => segment,
+                                    Err(e) => return Err(e),
+                                },
+                            );
+                            past_segments.push(past_segment);
+                        }
 
-                // TODO: do this in a background process instead
-                if let Err(e) = self.do_compaction() {
-                    return Err(e);
+                        Ok(is_full)
+                    })
+                })
+            })
+            .and_then(|new_segment_created| {
+                if new_segment_created {
+                    self.run_compaction_in_background();
                 }
-            }
-
-            Ok(())
-        })
+                Ok(())
+            })
     }
 
-    fn do_compaction(&mut self) -> Result<(), Error> {
-        if self.past_segments.is_empty() {
-            return Ok(());
+    fn run_compaction_in_background(&mut self) {
+        if !self.compaction_thread_join_handle.is_none() {
+            return;
         }
 
+        let past_segments = Arc::clone(&self.past_segments);
+        let current_segment = Arc::clone(&self.current_segment);
+        let dir_path = self.dir_path.clone();
+        let max_segment_records = self.max_segment_records;
+
+        self.compaction_thread_join_handle = Some(spawn(move || {
+            println!("compaction thread started");
+            Self::do_compaction(
+                past_segments,
+                current_segment,
+                dir_path,
+                max_segment_records,
+            )
+            .unwrap();
+        }));
+    }
+
+    // TODO: handle error scenarios better
+    fn do_compaction(
+        past_segments: Arc<RwLock<Vec<Segment>>>,
+        current_segment: Arc<RwLock<Segment>>,
+        dir_path: String,
+        max_segment_records: u64,
+    ) -> Result<(), Error> {
         let mut tmp_chunks = vec![];
         let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
             Chunk::new(
-                &self.dir_path,
+                &dir_path,
                 &format!("tmp{}.txt", tmp_chunks.len()),
-                self.max_segment_records,
+                max_segment_records,
             )
             .and_then(|fresh_chunk| {
                 tmp_chunks.push(fresh_chunk);
@@ -160,52 +212,85 @@ impl SegmentedLogsWithIndicesDb {
             return Err(e);
         }
 
-        let mut keys_set = HashSet::new();
-        for segment in self.past_segments.iter().rev() {
-            for key in segment.chunk.index.keys() {
-                if !keys_set.contains(key) {
-                    keys_set.insert(key.to_string());
+        match Self::read_locked(&past_segments) {
+            Ok(past_segments) => {
+                if past_segments.is_empty() {
+                    return Ok(());
+                }
 
-                    match segment.chunk.get(key) {
-                        Ok(Some(entry)) => {
-                            let current_chunk = tmp_chunks.last_mut().unwrap();
-                            if let Err(e) = current_chunk.add_entry(key, &entry) {
-                                return Err(e);
-                            }
-                            match current_chunk.is_full() {
-                                Ok(true) => {
-                                    if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
+                let mut keys_set = HashSet::new();
+                for segment in past_segments.iter().rev() {
+                    for key in segment.chunk.index.keys() {
+                        if !keys_set.contains(key) {
+                            keys_set.insert(key.to_string());
+
+                            match segment.chunk.get(key) {
+                                Ok(Some(entry)) => {
+                                    let current_chunk = tmp_chunks.last_mut().unwrap();
+                                    if let Err(e) = current_chunk.add_entry(key, &entry) {
                                         return Err(e);
                                     }
+                                    match current_chunk.is_full() {
+                                        Ok(true) => {
+                                            if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
+                                                return Err(e);
+                                            }
+                                        }
+                                        Ok(false) => {}
+                                        Err(e) => return Err(e),
+                                    }
                                 }
-                                Ok(false) => {}
+                                Ok(None) => {}
                                 Err(e) => return Err(e),
                             }
                         }
-                        Ok(None) => {}
-                        Err(e) => return Err(e),
                     }
                 }
             }
+            Err(e) => return Err(e),
         }
 
-        while !self.past_segments.is_empty() {
-            let segment = self.past_segments.pop().unwrap();
-            if let Err(e) = segment.chunk.delete_file() {
-                return Err(e);
-            }
-        }
+        Self::write_locked(&past_segments).and_then(|mut past_segments| {
+            Self::write_locked(&current_segment).and_then(|mut current_segment| {
+                while !past_segments.is_empty() {
+                    let segment = past_segments.pop().unwrap();
+                    if let Err(e) = segment.chunk.delete_file() {
+                        return Err(e);
+                    }
+                }
 
-        let mut segment_id = 0;
-        while !tmp_chunks.is_empty() {
-            let tmp_chunk = tmp_chunks.pop().unwrap();
-            match Segment::from_chunk(tmp_chunk, segment_id) {
-                Ok(segment) => self.past_segments.push(segment),
-                Err(e) => return Err(e),
-            }
-            segment_id += 1;
-        }
+                let mut segment_id = 0;
+                while !tmp_chunks.is_empty() {
+                    let tmp_chunk = tmp_chunks.pop().unwrap();
+                    match Segment::from_chunk(tmp_chunk, segment_id) {
+                        Ok(segment) => past_segments.push(segment),
+                        Err(e) => return Err(e),
+                    }
+                    segment_id += 1;
+                }
 
-        self.current_segment.change_id(segment_id)
+                current_segment.change_id(segment_id)
+            })
+        })
+    }
+
+    fn read_locked<'a, T>(
+        resource_lock_ptr: &'a Arc<RwLock<T>>,
+    ) -> Result<RwLockReadGuard<'a, T>, Error> {
+        let resource_lock: &RwLock<T> = resource_lock_ptr.borrow();
+        match resource_lock.read() {
+            Ok(resource) => Ok(resource),
+            Err(_) => Err(Error::new("internal error: lock poisoned")),
+        }
+    }
+
+    fn write_locked<'a, T>(
+        resource_lock_ptr: &'a Arc<RwLock<T>>,
+    ) -> Result<RwLockWriteGuard<'a, T>, Error> {
+        let resource_lock: &RwLock<T> = resource_lock_ptr.borrow();
+        match resource_lock.write() {
+            Ok(resource) => Ok(resource),
+            Err(_) => Err(Error::new("internal error: lock poisoned")),
+        }
     }
 }
