@@ -164,13 +164,13 @@ impl SegmentedLogsWithIndicesDb {
             })
             .and_then(|should_compact| {
                 if should_compact {
-                    self.run_compaction_in_background();
+                    self.do_compaction_in_background();
                 }
                 Ok(())
             })
     }
 
-    fn run_compaction_in_background(&mut self) {
+    fn do_compaction_in_background(&mut self) {
         if self.compaction_thread_join_handle.is_some() {
             return;
         }
