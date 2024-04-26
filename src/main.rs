@@ -10,6 +10,7 @@ mod kvdb;
 mod log_db;
 mod log_with_index_db;
 mod segmented_logs_with_indices_db;
+mod utils;
 
 fn main() {
     let mut in_mem_db_test = Test::new(InMemoryDb::new());
