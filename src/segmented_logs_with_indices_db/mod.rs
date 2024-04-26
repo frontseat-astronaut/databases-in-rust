@@ -1,6 +1,5 @@
 use crate::kvdb::{error::Error, KVDb};
 use std::{
-    borrow::Borrow,
     collections::HashSet,
     fs::{self, read_dir, DirEntry},
     mem::replace,
@@ -142,6 +141,9 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
+        if self.is_compaction_running() {
+            return Ok(());
+        }
         Self::write_locked(&self.past_segments)
             .and_then(|mut past_segments| {
                 Self::write_locked(&self.current_segment).and_then(|mut current_segment| {
@@ -171,7 +173,7 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn run_compaction_in_background(&mut self) {
-        if self.compaction_thread_join_handle.is_some() {
+        if self.is_compaction_running() {
             return;
         }
 
@@ -190,6 +192,15 @@ impl SegmentedLogsWithIndicesDb {
             )
             .unwrap();
         }));
+    }
+
+    fn is_compaction_running(&self) -> bool {
+        if let Some(join_handle) = &self.compaction_thread_join_handle {
+            if !join_handle.is_finished() {
+                return true;
+            }
+        }
+        false
     }
 
     // TODO: handle error scenarios better
@@ -282,9 +293,8 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn read_locked<'a, T>(
-        resource_lock_ptr: &'a Arc<RwLock<T>>,
+        resource_lock: &'a Arc<RwLock<T>>,
     ) -> Result<RwLockReadGuard<'a, T>, Error> {
-        let resource_lock: &RwLock<T> = resource_lock_ptr.borrow();
         match resource_lock.read() {
             Ok(resource) => Ok(resource),
             Err(_) => Err(Error::new("internal error: lock poisoned")),
@@ -292,9 +302,8 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn write_locked<'a, T>(
-        resource_lock_ptr: &'a Arc<RwLock<T>>,
+        resource_lock: &'a Arc<RwLock<T>>,
     ) -> Result<RwLockWriteGuard<'a, T>, Error> {
-        let resource_lock: &RwLock<T> = resource_lock_ptr.borrow();
         match resource_lock.write() {
             Ok(resource) => Ok(resource),
             Err(_) => Err(Error::new("internal error: lock poisoned")),
