@@ -18,10 +18,10 @@ mod segment;
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
-    compaction_threshold: u64,
+    merging_threshold: u64,
     past_segments: Arc<RwLock<Vec<Segment>>>,
     current_segment: Arc<RwLock<Segment>>,
-    compaction_thread_join_handle: Option<JoinHandle<()>>,
+    merging_thread_join_handle: Option<JoinHandle<()>>,
 }
 
 impl KVDb for SegmentedLogsWithIndicesDb {
@@ -71,7 +71,7 @@ impl KVDb for SegmentedLogsWithIndicesDb {
 
 impl Drop for SegmentedLogsWithIndicesDb {
     fn drop(&mut self) {
-        if let Some(handle) = self.compaction_thread_join_handle.take() {
+        if let Some(handle) = self.merging_thread_join_handle.take() {
             let _ = handle.join();
         }
     }
@@ -81,7 +81,7 @@ impl SegmentedLogsWithIndicesDb {
     pub fn new(
         dir_path: &str,
         max_segment_records: u64,
-        compaction_threshold: u64,
+        merging_threshold: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
         if let Err(e) = fs::create_dir_all(dir_path) {
             return Err(Error::from_io_error(&e));
@@ -133,15 +133,15 @@ impl SegmentedLogsWithIndicesDb {
         Ok(SegmentedLogsWithIndicesDb {
             dir_path: dir_path.to_string(),
             max_segment_records,
-            compaction_threshold,
+            merging_threshold,
             past_segments: Arc::new(RwLock::new(segments)),
             current_segment: Arc::new(RwLock::new(current_segment)),
-            compaction_thread_join_handle: None,
+            merging_thread_join_handle: None,
         })
     }
 
     fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
-        if self.is_compaction_running() {
+        if self.is_merging_running() {
             return Ok(());
         }
         Self::write_locked(&self.past_segments)
@@ -160,20 +160,20 @@ impl SegmentedLogsWithIndicesDb {
                             past_segments.push(past_segment);
                         }
 
-                        Ok(u64::try_from(past_segments.len()).unwrap() > self.compaction_threshold)
+                        Ok(u64::try_from(past_segments.len()).unwrap() > self.merging_threshold)
                     })
                 })
             })
-            .and_then(|should_compact| {
-                if should_compact {
-                    self.run_compaction_in_background();
+            .and_then(|should_merge| {
+                if should_merge {
+                    self.run_merging_in_background();
                 }
                 Ok(())
             })
     }
 
-    fn run_compaction_in_background(&mut self) {
-        if self.is_compaction_running() {
+    fn run_merging_in_background(&mut self) {
+        if self.is_merging_running() {
             return;
         }
 
@@ -182,9 +182,9 @@ impl SegmentedLogsWithIndicesDb {
         let dir_path = self.dir_path.clone();
         let max_segment_records = self.max_segment_records;
 
-        self.compaction_thread_join_handle = Some(spawn(move || {
-            println!("compaction thread started");
-            Self::do_compaction(
+        self.merging_thread_join_handle = Some(spawn(move || {
+            println!("merging thread started");
+            Self::do_merging(
                 past_segments,
                 current_segment,
                 dir_path,
@@ -194,8 +194,8 @@ impl SegmentedLogsWithIndicesDb {
         }));
     }
 
-    fn is_compaction_running(&self) -> bool {
-        if let Some(join_handle) = &self.compaction_thread_join_handle {
+    fn is_merging_running(&self) -> bool {
+        if let Some(join_handle) = &self.merging_thread_join_handle {
             if !join_handle.is_finished() {
                 return true;
             }
@@ -204,7 +204,7 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     // TODO: handle error scenarios better
-    fn do_compaction(
+    fn do_merging(
         past_segments: Arc<RwLock<Vec<Segment>>>,
         current_segment: Arc<RwLock<Segment>>,
         dir_path: String,
