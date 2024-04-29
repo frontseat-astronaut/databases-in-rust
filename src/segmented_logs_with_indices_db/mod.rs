@@ -19,6 +19,17 @@ use self::segment::{
 
 mod segment;
 
+macro_rules! check_segment {
+    ($segment: expr, $key: expr) => {
+        match $segment.chunk.get($key) {
+            Ok(Some(Present(value))) => return Ok(Some(value)),
+            Ok(Some(Deleted)) => return Ok(None),
+            Ok(None) => {}
+            Err(e) => return Err(e),
+        }
+    };
+}
+
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     max_segment_records: u64,
@@ -42,34 +53,21 @@ impl KVDb for SegmentedLogsWithIndicesDb {
         })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        read_locked(&self.current_segment).and_then(|current_segment| {
-            read_locked(&self.past_segments).and_then(|past_segments| {
-                let mut result = Ok(None);
-                let mut check_segment = |segment: &Segment| match segment.chunk.get(key) {
-                    Ok(None) => false,
-                    Ok(Some(Deleted)) => {
-                        result = Ok(None);
-                        true
-                    }
-                    Ok(Some(Present(value))) => {
-                        result = Ok(Some(value));
-                        true
-                    }
-                    Err(e) => {
-                        result = Err(e);
-                        true
-                    }
-                };
-                if !check_segment(&current_segment) {
-                    for segment in past_segments.iter().rev() {
-                        if check_segment(segment) {
-                            break;
-                        }
-                    }
+        match read_locked(&self.current_segment) {
+            Ok(current_segment) => {
+                check_segment!(current_segment, key);
+            }
+            Err(e) => return Err(e),
+        }
+        match read_locked(&self.past_segments) {
+            Ok(past_segments) => {
+                for segment in past_segments.iter().rev() {
+                    check_segment!(segment, key);
                 }
-                result
-            })
-        })
+            }
+            Err(e) => return Err(e),
+        }
+        Ok(None)
     }
 }
 
