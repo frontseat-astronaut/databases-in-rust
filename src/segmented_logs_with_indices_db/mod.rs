@@ -1,5 +1,6 @@
 use crate::{
     kvdb::{error::Error, KVDb},
+    unwrap_or_return,
     utils::{process_dir_contents, read_locked, write_locked},
 };
 use std::{
@@ -53,20 +54,16 @@ impl KVDb for SegmentedLogsWithIndicesDb {
         })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        match read_locked(&self.current_segment) {
-            Ok(current_segment) => {
-                check_segment!(current_segment, key);
-            }
-            Err(e) => return Err(e),
+        let current_segments = unwrap_or_return!(read_locked(&self.current_segment));
+        check_segment!(current_segments, key);
+        drop(current_segments);
+
+        let past_segments = unwrap_or_return!(read_locked(&self.past_segments));
+        for segment in past_segments.iter().rev() {
+            check_segment!(segment, key);
         }
-        match read_locked(&self.past_segments) {
-            Ok(past_segments) => {
-                for segment in past_segments.iter().rev() {
-                    check_segment!(segment, key);
-                }
-            }
-            Err(e) => return Err(e),
-        }
+        drop(past_segments);
+
         Ok(None)
     }
 }
@@ -90,32 +87,26 @@ impl SegmentedLogsWithIndicesDb {
         }
 
         let mut segments = vec![];
-        if let Err(e) = process_dir_contents(dir_path, &mut |path: PathBuf| {
+        unwrap_or_return!(process_dir_contents(dir_path, &mut |path: PathBuf| {
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     if let Some(stem_str) = stem.to_str() {
                         if let Ok(id) = stem_str.parse::<usize>() {
-                            match Segment::new(dir_path, id, max_segment_records) {
-                                Ok(segment) => segments.push(segment),
-                                Err(e) => return Err(e),
-                            };
+                            let segment =
+                                unwrap_or_return!(Segment::new(dir_path, id, max_segment_records));
+                            segments.push(segment);
                         }
                     }
                 }
             }
             Ok(())
-        }) {
-            return Err(e);
-        }
+        }));
 
         segments.sort_by_key(|segment| segment.id);
 
         let current_segment = match segments.pop() {
             Some(segment) => segment,
-            None => match Segment::new(dir_path, 0, max_segment_records) {
-                Ok(segment) => segment,
-                Err(e) => return Err(e),
-            },
+            None => unwrap_or_return!(Segment::new(dir_path, 0, max_segment_records)),
         };
 
         Ok(SegmentedLogsWithIndicesDb {
@@ -140,10 +131,11 @@ impl SegmentedLogsWithIndicesDb {
                             let id = current_segment.id + 1;
                             let past_segment = replace(
                                 &mut (*current_segment),
-                                match Segment::new(&self.dir_path, id, self.max_segment_records) {
-                                    Ok(segment) => segment,
-                                    Err(e) => return Err(e),
-                                },
+                                unwrap_or_return!(Segment::new(
+                                    &self.dir_path,
+                                    id,
+                                    self.max_segment_records
+                                )),
                             );
                             past_segments.push(past_segment);
                         }
@@ -198,9 +190,7 @@ impl SegmentedLogsWithIndicesDb {
         dir_path: String,
         max_segment_records: u64,
     ) -> Result<(), Error> {
-        if let Err(e) = Self::delete_tmp_files(&dir_path) {
-            return Err(e);
-        }
+        unwrap_or_return!(Self::delete_tmp_files(&dir_path));
 
         let mut tmp_chunks = vec![];
         let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
@@ -214,9 +204,7 @@ impl SegmentedLogsWithIndicesDb {
                 Ok(())
             })
         };
-        if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
-            return Err(e);
-        }
+        unwrap_or_return!(add_fresh_chunk(&mut tmp_chunks));
 
         match read_locked(&past_segments) {
             Ok(past_segments) => {
@@ -233,14 +221,10 @@ impl SegmentedLogsWithIndicesDb {
                             match segment.chunk.get(key) {
                                 Ok(Some(entry)) => {
                                     let current_chunk = tmp_chunks.last_mut().unwrap();
-                                    if let Err(e) = current_chunk.add_entry(key, &entry) {
-                                        return Err(e);
-                                    }
+                                    unwrap_or_return!(current_chunk.add_entry(key, &entry));
                                     match current_chunk.is_full() {
                                         Ok(true) => {
-                                            if let Err(e) = add_fresh_chunk(&mut tmp_chunks) {
-                                                return Err(e);
-                                            }
+                                            unwrap_or_return!(add_fresh_chunk(&mut tmp_chunks))
                                         }
                                         Ok(false) => {}
                                         Err(e) => return Err(e),
@@ -260,18 +244,14 @@ impl SegmentedLogsWithIndicesDb {
             .and_then(|mut past_segments| {
                 while !past_segments.is_empty() {
                     let segment = past_segments.pop().unwrap();
-                    if let Err(e) = segment.chunk.delete_file() {
-                        return Err(e);
-                    }
+                    unwrap_or_return!(segment.chunk.delete_file());
                 }
 
                 let mut segment_id = 0;
                 while !tmp_chunks.is_empty() {
                     let tmp_chunk = tmp_chunks.pop().unwrap();
-                    match Segment::from_chunk(tmp_chunk, segment_id) {
-                        Ok(segment) => past_segments.push(segment),
-                        Err(e) => return Err(e),
-                    }
+                    let segment = unwrap_or_return!(Segment::from_chunk(tmp_chunk, segment_id));
+                    past_segments.push(segment);
                     segment_id += 1;
                 }
 

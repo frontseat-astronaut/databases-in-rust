@@ -6,6 +6,16 @@ use std::{
 
 use crate::kvdb::error::Error;
 
+#[macro_export]
+macro_rules! unwrap_or_return {
+    ($result_expr: expr) => {
+        match $result_expr {
+            Ok(value) => value,
+            Err(e) => return Err(e),
+        }
+    };
+}
+
 pub fn process_dir_contents(
     dir_path: &str,
     process_dir_entry: &mut dyn FnMut(PathBuf) -> Result<(), Error>,
