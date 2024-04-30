@@ -1,5 +1,10 @@
 use crate::{
-    kvdb::{error::Error, KVDb},
+    check_kvdb_result,
+    kvdb::{
+        error::Error,
+        KVDb,
+        KVEntry::{Deleted, Present},
+    },
     unwrap_or_return,
     utils::{process_dir_contents, read_locked, write_locked},
 };
@@ -12,24 +17,9 @@ use std::{
     thread::{spawn, JoinHandle},
 };
 
-use self::segment::{
-    Chunk,
-    KVEntry::{Deleted, Present},
-    Segment,
-};
+use self::segment::{Chunk, Segment};
 
 mod segment;
-
-macro_rules! check_segment {
-    ($segment: expr, $key: expr) => {
-        match $segment.chunk.get($key) {
-            Ok(Some(Present(value))) => return Ok(Some(value)),
-            Ok(Some(Deleted)) => return Ok(None),
-            Ok(None) => {}
-            Err(e) => return Err(e),
-        }
-    };
-}
 
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
@@ -55,12 +45,12 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let current_segments = unwrap_or_return!(read_locked(&self.current_segment));
-        check_segment!(current_segments, key);
+        check_kvdb_result!(current_segments.chunk.get(key));
         drop(current_segments);
 
         let past_segments = unwrap_or_return!(read_locked(&self.past_segments));
         for segment in past_segments.iter().rev() {
-            check_segment!(segment, key);
+            check_kvdb_result!(segment.chunk.get(key));
         }
         drop(past_segments);
 

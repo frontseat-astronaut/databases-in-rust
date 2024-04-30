@@ -1,11 +1,9 @@
-use crate::{in_memory_db::InMemoryDb, kv_file::KVFile, kvdb::error::Error};
+use crate::{
+    in_memory_db::InMemoryDb,
+    kv_file::KVFile,
+    kvdb::{error::Error, KVEntry},
+};
 use KVEntry::{Deleted, Present};
-
-#[derive(Clone)]
-pub enum KVEntry<T: Clone> {
-    Deleted,
-    Present(T),
-}
 
 pub struct Chunk {
     max_records: u64,

@@ -16,6 +16,17 @@ macro_rules! unwrap_or_return {
     };
 }
 
+#[macro_export]
+macro_rules! check_kvdb_result {
+    ($kv_entry_result: expr) => {
+        match unwrap_or_return!($kv_entry_result) {
+            Some(Present(value)) => return Ok(Some(value)),
+            Some(Deleted) => return Ok(None),
+            None => {}
+        }
+    };
+}
+
 pub fn process_dir_contents(
     dir_path: &str,
     process_dir_entry: &mut dyn FnMut(PathBuf) -> Result<(), Error>,

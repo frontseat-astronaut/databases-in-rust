@@ -8,3 +8,9 @@ pub trait KVDb {
     fn delete(&mut self, key: &str) -> Result<(), Error>;
     fn get(&self, key: &str) -> Result<Option<String>, Error>;
 }
+
+#[derive(Clone)]
+pub enum KVEntry<T: Clone> {
+    Deleted,
+    Present(T),
+}
