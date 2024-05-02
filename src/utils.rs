@@ -17,6 +17,16 @@ macro_rules! unwrap_or_return {
 }
 
 #[macro_export]
+macro_rules! unwrap_or_return_io_error {
+    ($result_expr: expr) => {
+        match $result_expr {
+            Ok(value) => value,
+            Err(e) => return Err(Error::from_io_error(e)),
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! check_kvdb_result {
     ($kv_entry_result: expr) => {
         match unwrap_or_return!($kv_entry_result) {
@@ -40,12 +50,12 @@ pub fn process_dir_contents(
                             return Err(e);
                         }
                     }
-                    Err(e) => return Err(Error::from_io_error(&e)),
+                    Err(e) => return Err(Error::from_io_error(e)),
                 }
             }
             Ok(())
         }
-        Err(e) => Err(Error::from_io_error(&e)),
+        Err(e) => Err(Error::from_io_error(e)),
     }
 }
 
