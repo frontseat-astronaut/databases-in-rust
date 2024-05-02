@@ -33,57 +33,65 @@ impl KVFile {
         &self,
         process_line: &mut dyn FnMut(String, Option<String>, u64) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        self.open_file(true, false).and_then(|maybe_file| {
-            let Some(mut file) = maybe_file else {
-                return Ok(());
-            };
-            let mut reader = BufReader::new(&mut file);
-            loop {
-                let offset = unwrap_or_return_io_error!(reader.stream_position());
-                match unwrap_or_return!(Self::read_line(&mut reader)) {
-                    Some((key, value)) => {
-                        unwrap_or_return!(process_line(key, value, offset))
+        self.open_file(true, false)
+            .and_then(|maybe_file| {
+                let Some(mut file) = maybe_file else {
+                    return Ok(());
+                };
+                let mut reader = BufReader::new(&mut file);
+                loop {
+                    let offset = unwrap_or_return_io_error!(reader.stream_position());
+                    match unwrap_or_return!(Self::read_line(&mut reader)) {
+                        Some((key, value)) => {
+                            unwrap_or_return!(process_line(key, value, offset))
+                        }
+                        None => break,
                     }
-                    None => break,
                 }
-            }
-            Ok(())
-        })
+                Ok(())
+            })
+            .map_err(|e| Error::wrap("error in reading lines from KV File", e))
     }
 
     pub fn append_line(&mut self, key: &str, value: Option<&str>) -> Result<u64, Error> {
-        self.open_file(false, true).and_then(|maybe_file| {
-            let mut file = maybe_file.unwrap();
-            let pos = unwrap_or_return_io_error!(file.seek(SeekFrom::End(0)));
-            self.write_line(&mut file, key, value).and(Ok(pos))
-        })
+        self.open_file(false, true)
+            .and_then(|maybe_file| {
+                let mut file = maybe_file.unwrap();
+                let pos = unwrap_or_return_io_error!(file.seek(SeekFrom::End(0)));
+                self.write_line(&mut file, key, value).and(Ok(pos))
+            })
+            .map_err(|e| Error::wrap("error in appending line to KV File", e))
     }
 
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
-        self.open_file(true, false).and_then(|maybe_file| {
-            let Some(mut file) = maybe_file else {
-                return Ok(None);
-            };
-            unwrap_or_return_io_error!(file.seek(SeekFrom::Start(offset)));
-            let mut reader = BufReader::new(&mut file);
-            Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
-        })
+        self.open_file(true, false)
+            .and_then(|maybe_file| {
+                let Some(mut file) = maybe_file else {
+                    return Ok(None);
+                };
+                unwrap_or_return_io_error!(file.seek(SeekFrom::Start(offset)));
+                let mut reader = BufReader::new(&mut file);
+                Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
+            })
+            .map_err(|e| Error::wrap("error in getting value from KV File at offset", e))
     }
 
     pub fn delete(self) -> Result<(), Error> {
         let file_path = self.get_file_path();
-        fs::remove_file(file_path).map_err(|e| Error::from_io_error(e))
+        fs::remove_file(file_path).map_err(|e| Error::wrap_io_error("error in deleting KV File", e))
     }
 
     pub fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
         let old_file_path = self.get_file_path();
         self.file_name = new_file_name.to_owned();
         let new_file_path = self.get_file_path();
-        fs::rename(old_file_path, new_file_path).map_err(|e| Error::from_io_error(e))
+        fs::rename(old_file_path, new_file_path)
+            .map_err(|e| Error::wrap_io_error("error in renaming KV File", e))
     }
 
     fn open_file(&self, read: bool, write: bool) -> Result<Option<File>, Error> {
-        unwrap_or_return_io_error!(fs::create_dir_all(&self.dir_path));
+        unwrap_or_return!(fs::create_dir_all(&self.dir_path)
+            .map_err(|e| Error::wrap_io_error("error in creating directories for KV file", e)));
         let file_path = self.get_file_path();
         match OpenOptions::new()
             .read(read)
@@ -94,7 +102,7 @@ impl KVFile {
         {
             Ok(file) => Ok(Some(file)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(Error::from_io_error(e)),
+            Err(e) => Err(Error::wrap_io_error("error in opening KV file", e)),
         }
     }
 
