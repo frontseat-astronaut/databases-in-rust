@@ -3,7 +3,6 @@ use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 
 use crate::kvdb::error::Error;
-use crate::unwrap_or_return_io_error;
 
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
@@ -35,7 +34,7 @@ impl KVFile {
             let Some(file) = maybe_file else {
                 return Ok(0);
             };
-            let metadata = unwrap_or_return_io_error!(file.metadata());
+            let metadata = file.metadata().map_err(Error::from_io_error)?;
             Ok(metadata.size())
         })
     }
@@ -51,7 +50,7 @@ impl KVFile {
                 };
                 let mut reader = BufReader::new(&mut file);
                 loop {
-                    let offset = unwrap_or_return_io_error!(reader.stream_position());
+                    let offset = reader.stream_position().map_err(Error::from_io_error)?;
                     match Self::read_line(&mut reader)? {
                         Some((key, value)) => process_line(key, value, offset)?,
                         None => break,
@@ -66,7 +65,7 @@ impl KVFile {
         self.open_file(false, true)
             .and_then(|maybe_file| {
                 let mut file = maybe_file.unwrap();
-                let pos = unwrap_or_return_io_error!(file.seek(SeekFrom::End(0)));
+                let pos = file.seek(SeekFrom::End(0)).map_err(Error::from_io_error)?;
                 self.write_line(&mut file, key, value).and(Ok(pos))
             })
             .map_err(|e| Error::wrap("error in appending line to KV File", e))
@@ -78,7 +77,8 @@ impl KVFile {
                 let Some(mut file) = maybe_file else {
                     return Ok(None);
                 };
-                unwrap_or_return_io_error!(file.seek(SeekFrom::Start(offset)));
+                file.seek(SeekFrom::Start(offset))
+                    .map_err(Error::from_io_error)?;
                 let mut reader = BufReader::new(&mut file);
                 Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
             })
@@ -119,7 +119,7 @@ impl KVFile {
         reader: &mut BufReader<&mut File>,
     ) -> Result<Option<(String, Option<String>)>, Error> {
         let mut buf = String::new();
-        let bytes_read = unwrap_or_return_io_error!(reader.read_line(&mut buf));
+        let bytes_read = reader.read_line(&mut buf).map_err(Error::from_io_error)?;
         if bytes_read == 0 {
             return Ok(None);
         }
@@ -154,7 +154,7 @@ impl KVFile {
             Some(value) => value,
             None => TOMBSTONE,
         };
-        unwrap_or_return_io_error!(writeln!(file, "{}{}{}", key, DELIMITER, written_value));
+        writeln!(file, "{}{}{}", key, DELIMITER, written_value).map_err(Error::from_io_error)?;
         Ok(())
     }
 

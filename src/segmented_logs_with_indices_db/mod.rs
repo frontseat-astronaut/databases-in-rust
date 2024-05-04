@@ -5,7 +5,6 @@ use crate::{
         KVDb,
         KVEntry::{Deleted, Present},
     },
-    unwrap_or_return_io_error,
     utils::{process_dir_contents, read_locked, write_locked},
 };
 use std::{
@@ -72,7 +71,7 @@ impl SegmentedLogsWithIndicesDb {
         segment_size_threshold: u64,
         merging_threshold: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
-        unwrap_or_return_io_error!(create_dir_all(dir_path));
+        create_dir_all(dir_path).map_err(Error::from_io_error)?;
 
         let mut segments = vec![];
         process_dir_contents(dir_path, &mut |path: PathBuf| {
@@ -240,7 +239,7 @@ impl SegmentedLogsWithIndicesDb {
                 if let Some(file_name_os_str) = path.file_name() {
                     if let Some(file_name) = file_name_os_str.to_str() {
                         if file_name.starts_with("tmp") {
-                            unwrap_or_return_io_error!(remove_file(path));
+                            remove_file(path).map_err(Error::from_io_error)?;
                         }
                     }
                 }
