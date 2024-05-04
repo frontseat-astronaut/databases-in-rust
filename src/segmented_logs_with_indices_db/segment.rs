@@ -6,13 +6,12 @@ use crate::{
 use KVEntry::{Deleted, Present};
 
 pub struct Chunk {
-    max_records: u64,
     file: KVFile,
     pub index: InMemoryDb<KVEntry<u64>>,
 }
 
 impl Chunk {
-    pub fn new(dir_path: &str, file_name: &str, max_records: u64) -> Result<Chunk, Error> {
+    pub fn new(dir_path: &str, file_name: &str) -> Result<Chunk, Error> {
         let file = KVFile::new(dir_path, &file_name);
         let mut index = InMemoryDb::new();
 
@@ -23,16 +22,10 @@ impl Chunk {
             };
             Ok(())
         })
-        .and(Ok(Chunk {
-            max_records,
-            file,
-            index,
-        }))
+        .and(Ok(Chunk { file, index }))
     }
-    pub fn is_full(&self) -> Result<bool, Error> {
-        self.file
-            .count_lines()
-            .and_then(|count| Ok(self.is_count_full(count)))
+    pub fn size(&self) -> Result<u64, Error> {
+        self.file.size()
     }
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
@@ -66,10 +59,6 @@ impl Chunk {
     pub fn rename_file(&mut self, new_file_name: &str) -> Result<(), Error> {
         self.file.rename(new_file_name)
     }
-
-    fn is_count_full(&self, count: u64) -> bool {
-        count >= self.max_records
-    }
 }
 
 pub struct Segment {
@@ -78,9 +67,9 @@ pub struct Segment {
 }
 
 impl Segment {
-    pub fn new(dir_path: &str, id: usize, max_records: u64) -> Result<Segment, Error> {
+    pub fn new(dir_path: &str, id: usize) -> Result<Segment, Error> {
         let file_name = Self::get_file_name(id);
-        Chunk::new(dir_path, &file_name, max_records).map(|chunk| Segment { chunk, id })
+        Chunk::new(dir_path, &file_name).map(|chunk| Segment { chunk, id })
     }
     pub fn from_chunk(mut chunk: Chunk, id: usize) -> Result<Segment, Error> {
         let file_name = Self::get_file_name(id);

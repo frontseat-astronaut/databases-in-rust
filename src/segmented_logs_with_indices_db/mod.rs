@@ -23,7 +23,7 @@ mod segment;
 
 pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
-    max_segment_records: u64,
+    segment_size_threshold: u64,
     merging_threshold: u64,
     past_segments: Arc<RwLock<Vec<Segment>>>,
     current_segment: Arc<RwLock<Segment>>,
@@ -69,7 +69,7 @@ impl Drop for SegmentedLogsWithIndicesDb {
 impl SegmentedLogsWithIndicesDb {
     pub fn new(
         dir_path: &str,
-        max_segment_records: u64,
+        segment_size_threshold: u64,
         merging_threshold: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
         unwrap_or_return_io_error!(create_dir_all(dir_path));
@@ -80,8 +80,7 @@ impl SegmentedLogsWithIndicesDb {
                 if let Some(stem) = path.file_stem() {
                     if let Some(stem_str) = stem.to_str() {
                         if let Ok(id) = stem_str.parse::<usize>() {
-                            let segment =
-                                unwrap_or_return!(Segment::new(dir_path, id, max_segment_records));
+                            let segment = unwrap_or_return!(Segment::new(dir_path, id));
                             segments.push(segment);
                         }
                     }
@@ -94,12 +93,12 @@ impl SegmentedLogsWithIndicesDb {
 
         let current_segment = match segments.pop() {
             Some(segment) => segment,
-            None => unwrap_or_return!(Segment::new(dir_path, 0, max_segment_records)),
+            None => unwrap_or_return!(Segment::new(dir_path, 0,)),
         };
 
         Ok(SegmentedLogsWithIndicesDb {
             dir_path: dir_path.to_string(),
-            max_segment_records,
+            segment_size_threshold,
             merging_threshold,
             past_segments: Arc::new(RwLock::new(segments)),
             current_segment: Arc::new(RwLock::new(current_segment)),
@@ -114,22 +113,18 @@ impl SegmentedLogsWithIndicesDb {
         write_locked(&self.past_segments)
             .and_then(|mut past_segments| {
                 write_locked(&self.current_segment).and_then(|mut current_segment| {
-                    current_segment.chunk.is_full().and_then(|is_full| {
-                        if is_full {
-                            let id = current_segment.id + 1;
-                            let past_segment = replace(
-                                &mut (*current_segment),
-                                unwrap_or_return!(Segment::new(
-                                    &self.dir_path,
-                                    id,
-                                    self.max_segment_records
-                                )),
-                            );
-                            past_segments.push(past_segment);
-                        }
-
-                        Ok(u64::try_from(past_segments.len()).unwrap() > self.merging_threshold)
-                    })
+                    if unwrap_or_return!(Self::is_chunk_full(
+                        &current_segment.chunk,
+                        self.segment_size_threshold
+                    )) {
+                        let id = current_segment.id + 1;
+                        let past_segment = replace(
+                            &mut (*current_segment),
+                            unwrap_or_return!(Segment::new(&self.dir_path, id)),
+                        );
+                        past_segments.push(past_segment);
+                    }
+                    Ok(u64::try_from(past_segments.len()).unwrap() > self.merging_threshold)
                 })
             })
             .and_then(|should_merge| {
@@ -148,7 +143,7 @@ impl SegmentedLogsWithIndicesDb {
         let past_segments = Arc::clone(&self.past_segments);
         let current_segment = Arc::clone(&self.current_segment);
         let dir_path = self.dir_path.clone();
-        let max_segment_records = self.max_segment_records;
+        let segment_size_threshold = self.segment_size_threshold;
 
         self.merging_thread_join_handle = Some(spawn(move || {
             println!("merging thread started");
@@ -156,7 +151,7 @@ impl SegmentedLogsWithIndicesDb {
                 past_segments,
                 current_segment,
                 dir_path,
-                max_segment_records,
+                segment_size_threshold,
             )
             .unwrap();
         }));
@@ -176,18 +171,13 @@ impl SegmentedLogsWithIndicesDb {
         past_segments: Arc<RwLock<Vec<Segment>>>,
         current_segment: Arc<RwLock<Segment>>,
         dir_path: String,
-        max_segment_records: u64,
+        segment_size_threshold: u64,
     ) -> Result<(), Error> {
         unwrap_or_return!(Self::delete_tmp_files(&dir_path));
 
         let mut tmp_chunks = vec![];
         let add_fresh_chunk = |tmp_chunks: &mut Vec<Chunk>| {
-            Chunk::new(
-                &dir_path,
-                &format!("tmp{}.txt", tmp_chunks.len()),
-                max_segment_records,
-            )
-            .and_then(|fresh_chunk| {
+            Chunk::new(&dir_path, &format!("tmp{}.txt", tmp_chunks.len())).and_then(|fresh_chunk| {
                 tmp_chunks.push(fresh_chunk);
                 Ok(())
             })
@@ -210,12 +200,11 @@ impl SegmentedLogsWithIndicesDb {
                                 Ok(Some(entry)) => {
                                     let current_chunk = tmp_chunks.last_mut().unwrap();
                                     unwrap_or_return!(current_chunk.add_entry(key, &entry));
-                                    match current_chunk.is_full() {
-                                        Ok(true) => {
-                                            unwrap_or_return!(add_fresh_chunk(&mut tmp_chunks))
-                                        }
-                                        Ok(false) => {}
-                                        Err(e) => return Err(e),
+                                    if unwrap_or_return!(Self::is_chunk_full(
+                                        &current_chunk,
+                                        segment_size_threshold
+                                    )) {
+                                        unwrap_or_return!(add_fresh_chunk(&mut tmp_chunks))
                                     }
                                 }
                                 Ok(None) => {}
@@ -265,5 +254,11 @@ impl SegmentedLogsWithIndicesDb {
             }
             Ok(())
         })
+    }
+
+    fn is_chunk_full(chunk: &Chunk, segment_size_threshold: u64) -> Result<bool, Error> {
+        chunk
+            .size()
+            .and_then(|size| Ok(size >= segment_size_threshold))
     }
 }

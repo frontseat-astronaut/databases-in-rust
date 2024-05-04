@@ -24,7 +24,8 @@ fn main() {
     log_with_index_db_test.run();
 
     let mut segmented_logs_with_indices_db_test = Test::new(
-        SegmentedLogsWithIndicesDb::new("db_files/segmented_logs_with_indices_db/", 10, 5).unwrap(),
+        SegmentedLogsWithIndicesDb::new("db_files/segmented_logs_with_indices_db/", 100, 5)
+            .unwrap(),
     );
     segmented_logs_with_indices_db_test.run();
 }

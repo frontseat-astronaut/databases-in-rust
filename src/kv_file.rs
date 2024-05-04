@@ -1,5 +1,6 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
+use std::os::unix::fs::MetadataExt;
 
 use crate::kvdb::error::Error;
 use crate::{unwrap_or_return, unwrap_or_return_io_error};
@@ -27,6 +28,16 @@ impl KVFile {
             Ok(())
         })
         .and(Ok(count))
+    }
+
+    pub fn size(&self) -> Result<u64, Error> {
+        self.open_file(true, false).and_then(|maybe_file| {
+            let Some(file) = maybe_file else {
+                return Ok(0);
+            };
+            let metadata = unwrap_or_return_io_error!(file.metadata());
+            Ok(metadata.size())
+        })
     }
 
     pub fn read_lines(
