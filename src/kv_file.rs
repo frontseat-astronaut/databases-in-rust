@@ -3,7 +3,7 @@ use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 
 use crate::kvdb::error::Error;
-use crate::{unwrap_or_return, unwrap_or_return_io_error};
+use crate::unwrap_or_return_io_error;
 
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
@@ -52,10 +52,8 @@ impl KVFile {
                 let mut reader = BufReader::new(&mut file);
                 loop {
                     let offset = unwrap_or_return_io_error!(reader.stream_position());
-                    match unwrap_or_return!(Self::read_line(&mut reader)) {
-                        Some((key, value)) => {
-                            unwrap_or_return!(process_line(key, value, offset))
-                        }
+                    match Self::read_line(&mut reader)? {
+                        Some((key, value)) => process_line(key, value, offset)?,
                         None => break,
                     }
                 }
@@ -101,8 +99,8 @@ impl KVFile {
     }
 
     fn open_file(&self, read: bool, write: bool) -> Result<Option<File>, Error> {
-        unwrap_or_return!(fs::create_dir_all(&self.dir_path)
-            .map_err(|e| Error::wrap_io_error("error in creating directories for KV file", e)));
+        fs::create_dir_all(&self.dir_path)
+            .map_err(|e| Error::wrap_io_error("error in creating directories for KV file", e))?;
         let file_path = self.get_file_path();
         match OpenOptions::new()
             .read(read)

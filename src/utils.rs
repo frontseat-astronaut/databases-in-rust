@@ -7,16 +7,6 @@ use std::{
 use crate::kvdb::error::Error;
 
 #[macro_export]
-macro_rules! unwrap_or_return {
-    ($result_expr: expr) => {
-        match $result_expr {
-            Ok(value) => value,
-            Err(e) => return Err(e),
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! unwrap_or_return_io_error {
     ($result_expr: expr) => {
         match $result_expr {
@@ -29,7 +19,7 @@ macro_rules! unwrap_or_return_io_error {
 #[macro_export]
 macro_rules! check_kvdb_result {
     ($kv_entry_result: expr) => {
-        match unwrap_or_return!($kv_entry_result) {
+        match $kv_entry_result? {
             Some(Present(value)) => return Ok(Some(value)),
             Some(Deleted) => return Ok(None),
             None => {}
