@@ -1,8 +1,4 @@
-use std::{
-    fs::read_dir,
-    path::PathBuf,
-    sync::{RwLock, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::{fs::read_dir, path::PathBuf};
 
 use crate::kvdb::error::Error;
 
@@ -21,34 +17,10 @@ pub fn process_dir_contents(
     dir_path: &str,
     process_dir_entry: &mut dyn FnMut(PathBuf) -> Result<(), Error>,
 ) -> Result<(), Error> {
-    match read_dir(dir_path) {
-        Ok(contents) => {
-            for dir_entry_result in contents {
-                match dir_entry_result {
-                    Ok(dir_entry) => {
-                        if let Err(e) = process_dir_entry(dir_entry.path()) {
-                            return Err(e);
-                        }
-                    }
-                    Err(e) => return Err(Error::from_io_error(e)),
-                }
-            }
-            Ok(())
-        }
-        Err(e) => Err(Error::from_io_error(e)),
+    let contents = read_dir(dir_path)?;
+    for dir_entry_result in contents {
+        let dir_entry = dir_entry_result?;
+        process_dir_entry(dir_entry.path())?;
     }
-}
-
-pub fn read_locked<'a, T>(resource_lock: &'a RwLock<T>) -> Result<RwLockReadGuard<'a, T>, Error> {
-    match resource_lock.read() {
-        Ok(resource) => Ok(resource),
-        Err(_) => Err(Error::new("internal error: lock poisoned")),
-    }
-}
-
-pub fn write_locked<'a, T>(resource_lock: &'a RwLock<T>) -> Result<RwLockWriteGuard<'a, T>, Error> {
-    match resource_lock.write() {
-        Ok(resource) => Ok(resource),
-        Err(_) => Err(Error::new("internal error: lock poisoned")),
-    }
+    Ok(())
 }

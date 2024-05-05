@@ -1,34 +1,46 @@
+use std::error;
 use std::fmt;
 use std::io;
+use std::sync::PoisonError;
 
 #[derive(Debug)]
-pub struct Error {
-    msg: String,
+pub enum Error {
+    Io(io::Error),
+    LockPoisoned,
+    InvalidInput(String),
+    InvalidData(String),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.msg)
+        match *self {
+            Error::Io(ref err) => write!(f, "I/O error: {}", err),
+            Error::LockPoisoned => write!(f, "lock for resource poisoned"),
+            Error::InvalidInput(ref msg) => write!(f, "invalid input error: {}", msg),
+            Error::InvalidData(ref msg) => write!(f, "invalid data error: {}", msg),
+        }
     }
 }
 
-impl Error {
-    pub fn new(msg: &str) -> Error {
-        Error {
-            msg: String::from(msg),
+impl error::Error for Error {
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match *self {
+            Error::Io(ref err) => Some(err),
+            Error::LockPoisoned => None,
+            Error::InvalidInput(_) => None,
+            Error::InvalidData(_) => None,
         }
     }
-    pub fn from_io_error(e: io::Error) -> Error {
-        Error { msg: e.to_string() }
+}
+
+impl From<io::Error> for Error {
+    fn from(e: io::Error) -> Self {
+        Error::Io(e)
     }
-    pub fn wrap(msg: &str, e: Error) -> Error {
-        Error {
-            msg: format!("{}: {}", msg, e.msg),
-        }
-    }
-    pub fn wrap_io_error(msg: &str, e: io::Error) -> Error {
-        Error {
-            msg: format!("{}: {}", msg, e.to_string()),
-        }
+}
+
+impl<T> From<PoisonError<T>> for Error {
+    fn from(_: PoisonError<T>) -> Self {
+        Error::LockPoisoned
     }
 }

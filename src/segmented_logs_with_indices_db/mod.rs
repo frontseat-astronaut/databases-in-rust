@@ -5,7 +5,7 @@ use crate::{
         KVDb,
         KVEntry::{Deleted, Present},
     },
-    utils::{process_dir_contents, read_locked, write_locked},
+    utils::process_dir_contents,
 };
 use std::{
     collections::HashSet,
@@ -24,30 +24,34 @@ pub struct SegmentedLogsWithIndicesDb {
     dir_path: String,
     segment_size_threshold: u64,
     merging_threshold: u64,
-    past_segments: Arc<RwLock<Vec<Segment>>>,
-    current_segment: Arc<RwLock<Segment>>,
+    past_segments_locked: Arc<RwLock<Vec<Segment>>>,
+    current_segment_locked: Arc<RwLock<Segment>>,
     merging_thread_join_handle: Option<JoinHandle<()>>,
 }
 
 impl KVDb for SegmentedLogsWithIndicesDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.create_new_segment_if_current_full().and_then(|_| {
-            write_locked(&self.current_segment)
+            self.current_segment_locked
+                .write()
+                .map_err(Error::from)
                 .and_then(|mut current_segment| current_segment.chunk.set(key, value))
         })
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.create_new_segment_if_current_full().and_then(|_| {
-            write_locked(&self.current_segment)
+            self.current_segment_locked
+                .write()
+                .map_err(Error::from)
                 .and_then(|mut current_segment| current_segment.chunk.delete(key))
         })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        let current_segments = read_locked(&self.current_segment)?;
-        check_kvdb_result!(current_segments.chunk.get(key));
-        drop(current_segments);
+        let current_segment = self.current_segment_locked.read()?;
+        check_kvdb_result!(current_segment.chunk.get(key));
+        drop(current_segment);
 
-        let past_segments = read_locked(&self.past_segments)?;
+        let past_segments = self.past_segments_locked.read()?;
         for segment in past_segments.iter().rev() {
             check_kvdb_result!(segment.chunk.get(key));
         }
@@ -71,7 +75,7 @@ impl SegmentedLogsWithIndicesDb {
         segment_size_threshold: u64,
         merging_threshold: u64,
     ) -> Result<SegmentedLogsWithIndicesDb, Error> {
-        create_dir_all(dir_path).map_err(Error::from_io_error)?;
+        create_dir_all(dir_path)?;
 
         let mut segments = vec![];
         process_dir_contents(dir_path, &mut |path: PathBuf| {
@@ -99,8 +103,8 @@ impl SegmentedLogsWithIndicesDb {
             dir_path: dir_path.to_string(),
             segment_size_threshold,
             merging_threshold,
-            past_segments: Arc::new(RwLock::new(segments)),
-            current_segment: Arc::new(RwLock::new(current_segment)),
+            past_segments_locked: Arc::new(RwLock::new(segments)),
+            current_segment_locked: Arc::new(RwLock::new(current_segment)),
             merging_thread_join_handle: None,
         })
     }
@@ -109,24 +113,22 @@ impl SegmentedLogsWithIndicesDb {
         if self.is_merging_running() {
             return Ok(());
         }
-        write_locked(&self.past_segments)
-            .and_then(|mut past_segments| {
-                write_locked(&self.current_segment).and_then(|mut current_segment| {
-                    if Self::is_chunk_full(&current_segment.chunk, self.segment_size_threshold)? {
-                        let id = current_segment.id + 1;
-                        let past_segment =
-                            replace(&mut (*current_segment), Segment::new(&self.dir_path, id)?);
-                        past_segments.push(past_segment);
-                    }
-                    Ok(u64::try_from(past_segments.len()).unwrap() > self.merging_threshold)
-                })
-            })
-            .and_then(|should_merge| {
-                if should_merge {
-                    self.run_merging_in_background();
-                }
-                Ok(())
-            })
+        let mut past_segments = self.past_segments_locked.write()?;
+        let mut current_segment = self.current_segment_locked.write()?;
+        if Self::is_chunk_full(&current_segment.chunk, self.segment_size_threshold)? {
+            let id = current_segment.id + 1;
+            let past_segment = replace(&mut (*current_segment), Segment::new(&self.dir_path, id)?);
+            past_segments.push(past_segment);
+        }
+
+        let should_merge = u64::try_from(past_segments.len()).unwrap() > self.merging_threshold;
+        drop(past_segments);
+        drop(current_segment);
+
+        if should_merge {
+            self.run_merging_in_background();
+        }
+        Ok(())
     }
 
     fn run_merging_in_background(&mut self) {
@@ -134,8 +136,8 @@ impl SegmentedLogsWithIndicesDb {
             return;
         }
 
-        let past_segments = Arc::clone(&self.past_segments);
-        let current_segment = Arc::clone(&self.current_segment);
+        let past_segments = Arc::clone(&self.past_segments_locked);
+        let current_segment = Arc::clone(&self.current_segment_locked);
         let dir_path = self.dir_path.clone();
         let segment_size_threshold = self.segment_size_threshold;
 
@@ -162,8 +164,8 @@ impl SegmentedLogsWithIndicesDb {
 
     // TODO: handle error scenarios better
     fn do_merging(
-        past_segments: Arc<RwLock<Vec<Segment>>>,
-        current_segment: Arc<RwLock<Segment>>,
+        past_segments_locked: Arc<RwLock<Vec<Segment>>>,
+        current_segment_locked: Arc<RwLock<Segment>>,
         dir_path: String,
         segment_size_threshold: u64,
     ) -> Result<(), Error> {
@@ -178,59 +180,45 @@ impl SegmentedLogsWithIndicesDb {
         };
         add_fresh_chunk(&mut tmp_chunks)?;
 
-        match read_locked(&past_segments) {
-            Ok(past_segments) => {
-                if past_segments.is_empty() {
-                    return Ok(());
-                }
+        let past_segments = past_segments_locked.read()?;
+        if past_segments.is_empty() {
+            return Ok(());
+        }
+        let mut keys_set = HashSet::new();
+        for segment in past_segments.iter().rev() {
+            for key in segment.chunk.index.keys() {
+                if !keys_set.contains(key) {
+                    keys_set.insert(key.to_string());
 
-                let mut keys_set = HashSet::new();
-                for segment in past_segments.iter().rev() {
-                    for key in segment.chunk.index.keys() {
-                        if !keys_set.contains(key) {
-                            keys_set.insert(key.to_string());
-
-                            match segment.chunk.get(key) {
-                                Ok(Some(entry)) => {
-                                    let current_chunk = tmp_chunks.last_mut().unwrap();
-                                    current_chunk.add_entry(key, &entry)?;
-                                    if Self::is_chunk_full(&current_chunk, segment_size_threshold)?
-                                    {
-                                        add_fresh_chunk(&mut tmp_chunks)?
-                                    }
-                                }
-                                Ok(None) => {}
-                                Err(e) => return Err(e),
-                            }
+                    let maybe_entry = segment.chunk.get(key)?;
+                    if let Some(entry) = maybe_entry {
+                        let current_chunk = tmp_chunks.last_mut().unwrap();
+                        current_chunk.add_entry(key, &entry)?;
+                        if Self::is_chunk_full(&current_chunk, segment_size_threshold)? {
+                            add_fresh_chunk(&mut tmp_chunks)?
                         }
                     }
                 }
             }
-            Err(e) => return Err(e),
+        }
+        drop(past_segments);
+
+        let mut past_segments = past_segments_locked.write()?;
+        while !past_segments.is_empty() {
+            let segment = past_segments.pop().unwrap();
+            segment.chunk.delete_file()?;
         }
 
-        write_locked(&past_segments)
-            .and_then(|mut past_segments| {
-                while !past_segments.is_empty() {
-                    let segment = past_segments.pop().unwrap();
-                    segment.chunk.delete_file()?;
-                }
+        let mut segment_id = 0;
+        while !tmp_chunks.is_empty() {
+            let tmp_chunk = tmp_chunks.pop().unwrap();
+            let segment = Segment::from_chunk(tmp_chunk, segment_id)?;
+            past_segments.push(segment);
+            segment_id += 1;
+        }
 
-                let mut segment_id = 0;
-                while !tmp_chunks.is_empty() {
-                    let tmp_chunk = tmp_chunks.pop().unwrap();
-                    let segment = Segment::from_chunk(tmp_chunk, segment_id)?;
-                    past_segments.push(segment);
-                    segment_id += 1;
-                }
-
-                Ok(segment_id)
-            })
-            .and_then(|new_current_segment_id| {
-                write_locked(&current_segment).and_then(|mut current_segment| {
-                    current_segment.change_id(new_current_segment_id)
-                })
-            })
+        let mut current_segment = current_segment_locked.write()?;
+        current_segment.change_id(segment_id)
     }
 
     fn delete_tmp_files(dir_path: &str) -> Result<(), Error> {
@@ -239,7 +227,7 @@ impl SegmentedLogsWithIndicesDb {
                 if let Some(file_name_os_str) = path.file_name() {
                     if let Some(file_name) = file_name_os_str.to_str() {
                         if file_name.starts_with("tmp") {
-                            remove_file(path).map_err(Error::from_io_error)?;
+                            remove_file(path)?;
                         }
                     }
                 }

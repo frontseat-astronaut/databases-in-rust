@@ -34,7 +34,7 @@ impl KVFile {
             let Some(file) = maybe_file else {
                 return Ok(0);
             };
-            let metadata = file.metadata().map_err(Error::from_io_error)?;
+            let metadata = file.metadata()?;
             Ok(metadata.size())
         })
     }
@@ -43,64 +43,57 @@ impl KVFile {
         &self,
         process_line: &mut dyn FnMut(String, Option<String>, u64) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        self.open_file(true, false)
-            .and_then(|maybe_file| {
-                let Some(mut file) = maybe_file else {
-                    return Ok(());
-                };
-                let mut reader = BufReader::new(&mut file);
-                loop {
-                    let offset = reader.stream_position().map_err(Error::from_io_error)?;
-                    match Self::read_line(&mut reader)? {
-                        Some((key, value)) => process_line(key, value, offset)?,
-                        None => break,
-                    }
+        self.open_file(true, false).and_then(|maybe_file| {
+            let Some(mut file) = maybe_file else {
+                return Ok(());
+            };
+            let mut reader = BufReader::new(&mut file);
+            loop {
+                let offset = reader.stream_position()?;
+                match Self::read_line(&mut reader)? {
+                    Some((key, value)) => process_line(key, value, offset)?,
+                    None => break,
                 }
-                Ok(())
-            })
-            .map_err(|e| Error::wrap("error in reading lines from KV File", e))
+            }
+            Ok(())
+        })
     }
 
     pub fn append_line(&mut self, key: &str, value: Option<&str>) -> Result<u64, Error> {
-        self.open_file(false, true)
-            .and_then(|maybe_file| {
-                let mut file = maybe_file.unwrap();
-                let pos = file.seek(SeekFrom::End(0)).map_err(Error::from_io_error)?;
-                self.write_line(&mut file, key, value).and(Ok(pos))
-            })
-            .map_err(|e| Error::wrap("error in appending line to KV File", e))
+        self.open_file(false, true).and_then(|maybe_file| {
+            let mut file = maybe_file.unwrap();
+            let pos = file.seek(SeekFrom::End(0))?;
+            self.write_line(&mut file, key, value).and(Ok(pos))
+        })
     }
 
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
-        self.open_file(true, false)
-            .and_then(|maybe_file| {
-                let Some(mut file) = maybe_file else {
-                    return Ok(None);
-                };
-                file.seek(SeekFrom::Start(offset))
-                    .map_err(Error::from_io_error)?;
-                let mut reader = BufReader::new(&mut file);
-                Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
-            })
-            .map_err(|e| Error::wrap("error in getting value from KV File at offset", e))
+        self.open_file(true, false).and_then(|maybe_file| {
+            let Some(mut file) = maybe_file else {
+                return Ok(None);
+            };
+            file.seek(SeekFrom::Start(offset))?;
+            let mut reader = BufReader::new(&mut file);
+            Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
+        })
     }
 
     pub fn delete(self) -> Result<(), Error> {
         let file_path = self.get_file_path();
-        fs::remove_file(file_path).map_err(|e| Error::wrap_io_error("error in deleting KV File", e))
+        fs::remove_file(file_path)?;
+        Ok(())
     }
 
     pub fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
         let old_file_path = self.get_file_path();
         self.file_name = new_file_name.to_owned();
         let new_file_path = self.get_file_path();
-        fs::rename(old_file_path, new_file_path)
-            .map_err(|e| Error::wrap_io_error("error in renaming KV File", e))
+        fs::rename(old_file_path, new_file_path)?;
+        Ok(())
     }
 
     fn open_file(&self, read: bool, write: bool) -> Result<Option<File>, Error> {
-        fs::create_dir_all(&self.dir_path)
-            .map_err(|e| Error::wrap_io_error("error in creating directories for KV file", e))?;
+        fs::create_dir_all(&self.dir_path)?;
         let file_path = self.get_file_path();
         match OpenOptions::new()
             .read(read)
@@ -111,7 +104,7 @@ impl KVFile {
         {
             Ok(file) => Ok(Some(file)),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(Error::wrap_io_error("error in opening KV file", e)),
+            Err(e) => Err(e.into()),
         }
     }
 
@@ -119,7 +112,7 @@ impl KVFile {
         reader: &mut BufReader<&mut File>,
     ) -> Result<Option<(String, Option<String>)>, Error> {
         let mut buf = String::new();
-        let bytes_read = reader.read_line(&mut buf).map_err(Error::from_io_error)?;
+        let bytes_read = reader.read_line(&mut buf)?;
         if bytes_read == 0 {
             return Ok(None);
         }
@@ -133,7 +126,7 @@ impl KVFile {
                 }
                 Ok(Some((key.to_string(), value)))
             }
-            None => Err(Error::new(&format!(
+            None => Err(Error::InvalidData(format!(
                 "ill-formed line in file, expected the delimiter '{}' to be present",
                 DELIMITER
             ))),
@@ -142,11 +135,14 @@ impl KVFile {
 
     fn write_line(&self, file: &mut File, key: &str, value: Option<&str>) -> Result<(), Error> {
         if key.contains(DELIMITER) {
-            return Err(Error::new(&format!("key must not have '{}'", DELIMITER)));
+            return Err(Error::InvalidInput(format!(
+                "key must not have '{}'",
+                DELIMITER
+            )));
         }
         let written_value = match value {
             Some(TOMBSTONE) => {
-                return Err(Error::new(&format!(
+                return Err(Error::InvalidInput(format!(
                     "storing {} as a value is not supported",
                     TOMBSTONE
                 )))
@@ -154,7 +150,7 @@ impl KVFile {
             Some(value) => value,
             None => TOMBSTONE,
         };
-        writeln!(file, "{}{}{}", key, DELIMITER, written_value).map_err(Error::from_io_error)?;
+        writeln!(file, "{}{}{}", key, DELIMITER, written_value)?;
         Ok(())
     }
 
