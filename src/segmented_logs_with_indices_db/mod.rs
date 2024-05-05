@@ -31,7 +31,7 @@ pub struct SegmentedLogsWithIndicesDb {
 
 impl KVDb for SegmentedLogsWithIndicesDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        self.create_new_segment_if_current_full().and_then(|_| {
+        self.create_new_segment_if_current_big().and_then(|_| {
             self.current_segment_locked
                 .write()
                 .map_err(Error::from)
@@ -39,7 +39,7 @@ impl KVDb for SegmentedLogsWithIndicesDb {
         })
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.create_new_segment_if_current_full().and_then(|_| {
+        self.create_new_segment_if_current_big().and_then(|_| {
             self.current_segment_locked
                 .write()
                 .map_err(Error::from)
@@ -111,7 +111,7 @@ impl SegmentedLogsWithIndicesDb {
         })
     }
 
-    fn create_new_segment_if_current_full(&mut self) -> Result<(), Error> {
+    fn create_new_segment_if_current_big(&mut self) -> Result<(), Error> {
         if self.is_merging_running() {
             return Ok(());
         }
@@ -120,7 +120,7 @@ impl SegmentedLogsWithIndicesDb {
         {
             let mut past_segments = self.past_segments_locked.write()?;
             let mut current_segment = self.current_segment_locked.write()?;
-            if Self::is_chunk_full(&current_segment.chunk, self.segment_size_threshold)? {
+            if Self::is_chunk_big(&current_segment.chunk, self.segment_size_threshold)? {
                 let id = current_segment.id + 1;
                 let past_segment =
                     replace(&mut (*current_segment), Segment::new(&self.dir_path, id)?);
@@ -200,7 +200,7 @@ impl SegmentedLogsWithIndicesDb {
                         if let Some(entry) = maybe_entry {
                             let current_chunk = tmp_chunks.last_mut().unwrap();
                             current_chunk.add_entry(key, &entry)?;
-                            if Self::is_chunk_full(&current_chunk, segment_size_threshold)? {
+                            if Self::is_chunk_big(&current_chunk, segment_size_threshold)? {
                                 add_fresh_chunk(&mut tmp_chunks)?
                             }
                         }
@@ -243,9 +243,7 @@ impl SegmentedLogsWithIndicesDb {
         })
     }
 
-    fn is_chunk_full(chunk: &Chunk, segment_size_threshold: u64) -> Result<bool, Error> {
-        chunk
-            .size()
-            .and_then(|size| Ok(size >= segment_size_threshold))
+    fn is_chunk_big(chunk: &Chunk, size_threshold: u64) -> Result<bool, Error> {
+        chunk.size().and_then(|size| Ok(size >= size_threshold))
     }
 }
