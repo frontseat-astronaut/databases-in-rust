@@ -47,15 +47,17 @@ impl KVDb for SegmentedLogsWithIndicesDb {
         })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        let current_segment = self.current_segment_locked.read()?;
-        check_kvdb_result!(current_segment.chunk.get(key));
-        drop(current_segment);
-
-        let past_segments = self.past_segments_locked.read()?;
-        for segment in past_segments.iter().rev() {
-            check_kvdb_result!(segment.chunk.get(key));
+        {
+            let current_segment = self.current_segment_locked.read()?;
+            check_kvdb_result!(current_segment.chunk.get(key));
         }
-        drop(past_segments);
+
+        {
+            let past_segments = self.past_segments_locked.read()?;
+            for segment in past_segments.iter().rev() {
+                check_kvdb_result!(segment.chunk.get(key));
+            }
+        }
 
         Ok(None)
     }
@@ -113,17 +115,20 @@ impl SegmentedLogsWithIndicesDb {
         if self.is_merging_running() {
             return Ok(());
         }
-        let mut past_segments = self.past_segments_locked.write()?;
-        let mut current_segment = self.current_segment_locked.write()?;
-        if Self::is_chunk_full(&current_segment.chunk, self.segment_size_threshold)? {
-            let id = current_segment.id + 1;
-            let past_segment = replace(&mut (*current_segment), Segment::new(&self.dir_path, id)?);
-            past_segments.push(past_segment);
-        }
 
-        let should_merge = u64::try_from(past_segments.len()).unwrap() > self.merging_threshold;
-        drop(past_segments);
-        drop(current_segment);
+        let should_merge;
+        {
+            let mut past_segments = self.past_segments_locked.write()?;
+            let mut current_segment = self.current_segment_locked.write()?;
+            if Self::is_chunk_full(&current_segment.chunk, self.segment_size_threshold)? {
+                let id = current_segment.id + 1;
+                let past_segment =
+                    replace(&mut (*current_segment), Segment::new(&self.dir_path, id)?);
+                past_segments.push(past_segment);
+            }
+
+            should_merge = u64::try_from(past_segments.len()).unwrap() > self.merging_threshold;
+        }
 
         if should_merge {
             self.run_merging_in_background();
@@ -180,45 +185,47 @@ impl SegmentedLogsWithIndicesDb {
         };
         add_fresh_chunk(&mut tmp_chunks)?;
 
-        let past_segments = past_segments_locked.read()?;
-        if past_segments.is_empty() {
-            return Ok(());
-        }
-        let mut keys_set = HashSet::new();
-        for segment in past_segments.iter().rev() {
-            for key in segment.chunk.index.keys() {
-                if !keys_set.contains(key) {
-                    keys_set.insert(key.to_string());
+        {
+            let past_segments = past_segments_locked.read()?;
+            if past_segments.is_empty() {
+                return Ok(());
+            }
+            let mut keys_set = HashSet::new();
+            for segment in past_segments.iter().rev() {
+                for key in segment.chunk.index.keys() {
+                    if !keys_set.contains(key) {
+                        keys_set.insert(key.to_string());
 
-                    let maybe_entry = segment.chunk.get(key)?;
-                    if let Some(entry) = maybe_entry {
-                        let current_chunk = tmp_chunks.last_mut().unwrap();
-                        current_chunk.add_entry(key, &entry)?;
-                        if Self::is_chunk_full(&current_chunk, segment_size_threshold)? {
-                            add_fresh_chunk(&mut tmp_chunks)?
+                        let maybe_entry = segment.chunk.get(key)?;
+                        if let Some(entry) = maybe_entry {
+                            let current_chunk = tmp_chunks.last_mut().unwrap();
+                            current_chunk.add_entry(key, &entry)?;
+                            if Self::is_chunk_full(&current_chunk, segment_size_threshold)? {
+                                add_fresh_chunk(&mut tmp_chunks)?
+                            }
                         }
                     }
                 }
             }
-        }
-        drop(past_segments);
+        };
 
-        let mut past_segments = past_segments_locked.write()?;
-        while !past_segments.is_empty() {
-            let segment = past_segments.pop().unwrap();
-            segment.chunk.delete_file()?;
+        let mut current_segment_id = 0;
+        {
+            let mut past_segments = past_segments_locked.write()?;
+            while !past_segments.is_empty() {
+                let segment = past_segments.pop().unwrap();
+                segment.chunk.delete_file()?;
+            }
+            while !tmp_chunks.is_empty() {
+                let tmp_chunk = tmp_chunks.pop().unwrap();
+                let segment = Segment::from_chunk(tmp_chunk, current_segment_id)?;
+                past_segments.push(segment);
+                current_segment_id += 1;
+            }
         }
-        let mut segment_id = 0;
-        while !tmp_chunks.is_empty() {
-            let tmp_chunk = tmp_chunks.pop().unwrap();
-            let segment = Segment::from_chunk(tmp_chunk, segment_id)?;
-            past_segments.push(segment);
-            segment_id += 1;
-        }
-        drop(past_segments);
 
         let mut current_segment = current_segment_locked.write()?;
-        current_segment.change_id(segment_id)
+        current_segment.change_id(current_segment_id)
     }
 
     fn delete_tmp_files(dir_path: &str) -> Result<(), Error> {
