@@ -208,7 +208,6 @@ impl SegmentedLogsWithIndicesDb {
             let segment = past_segments.pop().unwrap();
             segment.chunk.delete_file()?;
         }
-
         let mut segment_id = 0;
         while !tmp_chunks.is_empty() {
             let tmp_chunk = tmp_chunks.pop().unwrap();
@@ -216,6 +215,7 @@ impl SegmentedLogsWithIndicesDb {
             past_segments.push(segment);
             segment_id += 1;
         }
+        drop(past_segments);
 
         let mut current_segment = current_segment_locked.write()?;
         current_segment.change_id(segment_id)
