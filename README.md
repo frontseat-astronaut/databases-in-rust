@@ -14,3 +14,8 @@ To run,
 ```
 cargo run
 ```
+
+### Resources
+- [Designing Data Intensive Applications](https://dataintensive.net/) by Martin Kleppmann
+- [The Rust Programming Language](https://doc.rust-lang.org/book/title-page.html) by Steve Klabnik and Carol Nichols
+- [Error Handling in Rust](https://blog.burntsushi.net/rust-error-handling/) by Andrew Gallant
