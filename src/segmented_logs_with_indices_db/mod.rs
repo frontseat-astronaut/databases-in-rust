@@ -188,9 +188,9 @@ impl SegmentedLogsWithIndicesDb {
                         keys_set.insert(key.to_string());
 
                         let maybe_entry = segment.chunk.get(key)?;
-                        if let Some(entry) = maybe_entry {
+                        if let Some(Present(value)) = maybe_entry {
                             let current_chunk = tmp_chunks.last_mut().unwrap();
-                            current_chunk.add_entry(key, &entry)?;
+                            current_chunk.add_entry(key, &Present(value))?;
                             if Self::is_chunk_big(&current_chunk, segment_size_threshold)? {
                                 add_fresh_chunk(&mut tmp_chunks)?
                             }
