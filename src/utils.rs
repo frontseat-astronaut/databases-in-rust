@@ -1,6 +1,6 @@
 use std::{fs::read_dir, path::PathBuf};
 
-use crate::kvdb::error::Error;
+use crate::error::Error;
 
 #[macro_export]
 macro_rules! check_kvdb_result {

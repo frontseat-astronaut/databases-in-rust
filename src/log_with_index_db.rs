@@ -1,8 +1,7 @@
+use crate::error::Error;
+use crate::in_memory_db::InMemoryDb;
 use crate::kv_file::KVFile;
-use crate::{
-    in_memory_db::InMemoryDb,
-    kvdb::{error::Error, KVDb},
-};
+use crate::kvdb::KVDb;
 
 pub struct LogWithIndexDb {
     file: KVFile,

@@ -1,5 +1,6 @@
+use crate::error::Error;
 use crate::kv_file::KVFile;
-use crate::kvdb::{error::Error, KVDb};
+use crate::kvdb::KVDb;
 
 pub struct LogDb {
     file: KVFile,

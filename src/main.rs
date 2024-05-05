@@ -4,6 +4,7 @@ use log_db::LogDb;
 use log_with_index_db::LogWithIndexDb;
 use segmented_logs_with_indices_db::SegmentedLogsWithIndicesDb;
 
+mod error;
 mod in_memory_db;
 mod kv_file;
 mod kvdb;

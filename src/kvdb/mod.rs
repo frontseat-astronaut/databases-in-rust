@@ -1,6 +1,5 @@
-use error::Error;
+use crate::error::Error;
 
-pub mod error;
 pub mod test;
 
 pub trait KVDb {

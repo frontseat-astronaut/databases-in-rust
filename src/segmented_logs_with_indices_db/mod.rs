@@ -1,7 +1,7 @@
 use crate::{
     check_kvdb_result,
+    error::Error,
     kvdb::{
-        error::Error,
         KVDb,
         KVEntry::{Deleted, Present},
     },

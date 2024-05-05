@@ -1,8 +1,4 @@
-use crate::{
-    in_memory_db::InMemoryDb,
-    kv_file::KVFile,
-    kvdb::{error::Error, KVEntry},
-};
+use crate::{error::Error, in_memory_db::InMemoryDb, kv_file::KVFile, kvdb::KVEntry};
 use KVEntry::{Deleted, Present};
 
 pub struct Chunk {

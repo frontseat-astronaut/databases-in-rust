@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 
-use crate::kvdb::error::Error;
+use crate::error::Error;
 
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
@@ -18,15 +18,6 @@ impl KVFile {
             dir_path: dir_path.to_string(),
             file_name: file_name.to_string(),
         }
-    }
-
-    pub fn count_lines(&self) -> Result<u64, Error> {
-        let mut count = 0;
-        self.read_lines(&mut |_, _, _| {
-            count += 1;
-            Ok(())
-        })
-        .and(Ok(count))
     }
 
     pub fn size(&self) -> Result<u64, Error> {
