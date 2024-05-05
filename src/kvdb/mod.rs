@@ -13,3 +13,12 @@ pub enum KVEntry<T: Clone> {
     Deleted,
     Present(T),
 }
+
+impl<T: Clone> Into<Option<T>> for KVEntry<T> {
+    fn into(self) -> Option<T> {
+        match self {
+            KVEntry::Deleted => None,
+            KVEntry::Present(value) => Some(value),
+        }
+    }
+}

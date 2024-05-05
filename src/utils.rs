@@ -1,12 +1,12 @@
-use std::{fs::read_dir, path::PathBuf};
+use std::{fs::read_dir, path::PathBuf, thread::JoinHandle};
 
 use crate::error::Error;
 
 #[macro_export]
-macro_rules! check_kvdb_result {
-    ($kv_entry_result: expr) => {
-        match $kv_entry_result? {
-            Some(Present(value)) => return Ok(Some(value)),
+macro_rules! check_kvdb_entry {
+    ($kv_entry_entry: expr) => {
+        match $kv_entry_entry {
+            Some(Present(value)) => return Ok(Some(value.to_owned())),
             Some(Deleted) => return Ok(None),
             None => {}
         }
@@ -23,4 +23,11 @@ pub fn process_dir_contents(
         process_dir_entry(dir_entry.path())?;
     }
     Ok(())
+}
+
+pub fn is_thread_running<T>(maybe_handle: &Option<JoinHandle<T>>) -> bool {
+    match maybe_handle {
+        Some(handle) => !handle.is_finished(),
+        None => false,
+    }
 }

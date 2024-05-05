@@ -1,11 +1,11 @@
 use crate::{
-    check_kvdb_result,
+    check_kvdb_entry,
     error::Error,
     kvdb::{
         KVDb,
         KVEntry::{Deleted, Present},
     },
-    utils::process_dir_contents,
+    utils::{is_thread_running, process_dir_contents},
 };
 use std::{
     collections::HashSet,
@@ -49,13 +49,13 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         {
             let current_segment = self.current_segment_locked.read()?;
-            check_kvdb_result!(current_segment.chunk.get(key));
+            check_kvdb_entry!(current_segment.chunk.get(key)?);
         }
 
         {
             let past_segments = self.past_segments_locked.read()?;
             for segment in past_segments.iter().rev() {
-                check_kvdb_result!(segment.chunk.get(key));
+                check_kvdb_entry!(segment.chunk.get(key)?);
             }
         }
 
@@ -112,7 +112,7 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn create_new_segment_if_current_big(&mut self) -> Result<(), Error> {
-        if self.is_merging_running() {
+        if is_thread_running(&self.merging_thread_join_handle) {
             return Ok(());
         }
 
@@ -137,7 +137,7 @@ impl SegmentedLogsWithIndicesDb {
     }
 
     fn run_merging_in_background(&mut self) {
-        if self.is_merging_running() {
+        if is_thread_running(&self.merging_thread_join_handle) {
             return;
         }
 
@@ -156,15 +156,6 @@ impl SegmentedLogsWithIndicesDb {
             )
             .unwrap();
         }));
-    }
-
-    fn is_merging_running(&self) -> bool {
-        if let Some(join_handle) = &self.merging_thread_join_handle {
-            if !join_handle.is_finished() {
-                return true;
-            }
-        }
-        false
     }
 
     // TODO: handle error scenarios better
@@ -224,8 +215,12 @@ impl SegmentedLogsWithIndicesDb {
             }
         }
 
-        let mut current_segment = current_segment_locked.write()?;
-        current_segment.change_id(current_segment_id)
+        {
+            let mut current_segment = current_segment_locked.write()?;
+            current_segment.change_id(current_segment_id)?;
+        }
+
+        Ok(())
     }
 
     fn delete_tmp_files(dir_path: &str) -> Result<(), Error> {

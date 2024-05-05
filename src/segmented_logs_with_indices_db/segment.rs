@@ -11,12 +11,12 @@ impl Chunk {
         let file = KVFile::new(dir_path, &file_name);
         let mut index = InMemoryDb::new();
 
-        file.read_lines(&mut |key, maybe_value, offset| {
-            match maybe_value {
-                Some(_) => index.set(&key, &Present(offset)),
-                None => index.set(&key, &Deleted),
+        file.read_lines(&mut |key, entry, offset| {
+            match entry {
+                Present(_) => index.set(&key, &Present(offset)),
+                Deleted => index.set(&key, &Deleted),
             };
-            Ok(())
+            Ok(false)
         })
         .and(Ok(Chunk { file, index }))
     }
@@ -25,12 +25,12 @@ impl Chunk {
     }
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
-            .append_line(key, Some(value))
+            .append_line(key, &Present(value.to_string()))
             .and_then(|offset| Ok(self.index.set(key, &Present(offset))))
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.file
-            .append_line(key, None)
+            .append_line(key, &Deleted)
             .and_then(|_| Ok(self.index.set(key, &Deleted)))
     }
     pub fn get(&self, key: &str) -> Result<Option<KVEntry<String>>, Error> {

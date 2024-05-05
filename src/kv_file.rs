@@ -3,6 +3,7 @@ use std::io::{self, BufRead, BufReader, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
 
 use crate::error::Error;
+use crate::kvdb::KVEntry;
 
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
@@ -32,17 +33,33 @@ impl KVFile {
 
     pub fn read_lines(
         &self,
-        process_line: &mut dyn FnMut(String, Option<String>, u64) -> Result<(), Error>,
+        process_line: &mut dyn FnMut(String, KVEntry<String>, u64) -> Result<bool, Error>,
+    ) -> Result<(), Error> {
+        self.read_lines_from_offset(process_line, 0)
+    }
+
+    pub fn read_lines_from_offset(
+        &self,
+        process_line: &mut dyn FnMut(String, KVEntry<String>, u64) -> Result<bool, Error>,
+        offset: u64,
     ) -> Result<(), Error> {
         self.open_file(true, false).and_then(|maybe_file| {
             let Some(mut file) = maybe_file else {
                 return Ok(());
             };
+            if offset > 0 {
+                file.seek(SeekFrom::Start(offset))?;
+            }
             let mut reader = BufReader::new(&mut file);
             loop {
                 let offset = reader.stream_position()?;
                 match Self::read_line(&mut reader)? {
-                    Some((key, value)) => process_line(key, value, offset)?,
+                    Some((key, value)) => {
+                        let stop = process_line(key, value, offset)?;
+                        if stop {
+                            break;
+                        }
+                    }
                     None => break,
                 }
             }
@@ -50,7 +67,7 @@ impl KVFile {
         })
     }
 
-    pub fn append_line(&mut self, key: &str, value: Option<&str>) -> Result<u64, Error> {
+    pub fn append_line(&mut self, key: &str, value: &KVEntry<String>) -> Result<u64, Error> {
         self.open_file(false, true).and_then(|maybe_file| {
             let mut file = maybe_file.unwrap();
             let pos = file.seek(SeekFrom::End(0))?;
@@ -59,14 +76,15 @@ impl KVFile {
     }
 
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
-        self.open_file(true, false).and_then(|maybe_file| {
-            let Some(mut file) = maybe_file else {
-                return Ok(None);
-            };
-            file.seek(SeekFrom::Start(offset))?;
-            let mut reader = BufReader::new(&mut file);
-            Self::read_line(&mut reader).map(|maybe_kv| maybe_kv.and_then(|(_, value)| value))
-        })
+        let mut value = None;
+        self.read_lines_from_offset(
+            &mut |_, entry, _| {
+                value = entry.into();
+                Ok(true)
+            },
+            offset,
+        )?;
+        Ok(value)
     }
 
     pub fn delete(self) -> Result<(), Error> {
@@ -101,7 +119,7 @@ impl KVFile {
 
     fn read_line(
         reader: &mut BufReader<&mut File>,
-    ) -> Result<Option<(String, Option<String>)>, Error> {
+    ) -> Result<Option<(String, KVEntry<String>)>, Error> {
         let mut buf = String::new();
         let bytes_read = reader.read_line(&mut buf)?;
         if bytes_read == 0 {
@@ -111,9 +129,9 @@ impl KVFile {
         let _ = buf.split_off(buf.len() - 1);
         match buf.split_once(DELIMITER) {
             Some((key, read_value)) => {
-                let mut value = None;
+                let mut value = KVEntry::Deleted;
                 if read_value != TOMBSTONE {
-                    value = Some(read_value.to_string())
+                    value = KVEntry::Present(read_value.to_string())
                 }
                 Ok(Some((key.to_string(), value)))
             }
@@ -124,7 +142,7 @@ impl KVFile {
         }
     }
 
-    fn write_line(&self, file: &mut File, key: &str, value: Option<&str>) -> Result<(), Error> {
+    fn write_line(&self, file: &mut File, key: &str, value: &KVEntry<String>) -> Result<(), Error> {
         if key.contains(DELIMITER) {
             return Err(Error::InvalidInput(format!(
                 "key must not have '{}'",
@@ -132,14 +150,16 @@ impl KVFile {
             )));
         }
         let written_value = match value {
-            Some(TOMBSTONE) => {
-                return Err(Error::InvalidInput(format!(
-                    "storing {} as a value is not supported",
-                    TOMBSTONE
-                )))
+            KVEntry::Present(ref value) => {
+                if value == TOMBSTONE {
+                    return Err(Error::InvalidInput(format!(
+                        "storing {} as a value is not supported",
+                        TOMBSTONE
+                    )));
+                }
+                value
             }
-            Some(value) => value,
-            None => TOMBSTONE,
+            KVEntry::Deleted => TOMBSTONE,
         };
         writeln!(file, "{}{}{}", key, DELIMITER, written_value)?;
         Ok(())
