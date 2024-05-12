@@ -8,7 +8,7 @@ pub trait KVDb {
     fn get(&self, key: &str) -> Result<Option<String>, Error>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum KVEntry<T: Clone> {
     Deleted,
     Present(T),

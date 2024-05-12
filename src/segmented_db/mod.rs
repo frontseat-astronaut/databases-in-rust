@@ -8,10 +8,7 @@ use std::{
 use crate::{
     check_kvdb_entry,
     error::Error,
-    kvdb::{
-        KVDb,
-        KVEntry::{Deleted, Present},
-    },
+    kvdb::KVEntry::{Deleted, Present},
     utils::{is_thread_running, process_dir_contents},
 };
 
@@ -23,44 +20,48 @@ pub mod segment_file;
 
 const TMP_SEGMENT_FILE_NAME: &str = "tmp.txt";
 
+pub enum SegmentCreationPolicy {
+    Triggered,
+    Automatic,
+}
+
 pub struct SegmentedDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
 {
     merging_threshold: u64,
+    segment_creation_policy: SegmentCreationPolicy,
     past_segments_lock: Arc<RwLock<Vec<Segment<T>>>>,
     current_segment_lock: Arc<RwLock<Segment<T>>>,
     file_factory: Arc<U>,
     join_handle: Option<JoinHandle<Result<(), Error>>>,
 }
 
-impl<T, U> KVDb for SegmentedDb<T, U>
+impl<T, U> SegmentedDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
 {
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
-        self.maybe_create_new_segment().and_then(|_| {
-            self.current_segment_lock
-                .write()
-                .map_err(Error::from)
-                .and_then(|mut current_segment| {
-                    current_segment
-                        .file
-                        .add_entry(key, &Present(value.to_owned()))
-                })
-        })
+    pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+        self.maybe_create_fresh_segment()?;
+        self.current_segment_lock
+            .write()
+            .map_err(Error::from)
+            .and_then(|mut current_segment| {
+                current_segment
+                    .file
+                    .add_entry(key, &Present(value.to_owned()))
+            })
     }
-    fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.maybe_create_new_segment().and_then(|_| {
-            self.current_segment_lock
-                .write()
-                .map_err(Error::from)
-                .and_then(|mut current_segment| current_segment.file.add_entry(key, &Deleted))
-        })
+    pub fn delete(&mut self, key: &str) -> Result<(), Error> {
+        self.maybe_create_fresh_segment()?;
+        self.current_segment_lock
+            .write()
+            .map_err(Error::from)
+            .and_then(|mut current_segment| current_segment.file.add_entry(key, &Deleted))
     }
-    fn get(&self, key: &str) -> Result<Option<String>, Error> {
+    pub fn get(&self, key: &str) -> Result<Option<String>, Error> {
         {
             let current_segment = self.current_segment_lock.read()?;
             check_kvdb_entry!(current_segment.file.get_entry(key)?);
@@ -74,6 +75,41 @@ where
         }
 
         Ok(None)
+    }
+    pub fn create_fresh_segment(&mut self) -> Result<(), Error> {
+        if self
+            .current_segment_lock
+            .read()?
+            .file
+            .ready_to_be_archived()?
+        {
+            let past_segments_len;
+            {
+                let mut past_segments = self.past_segments_lock.write()?;
+                let mut current_segment = self.current_segment_lock.write()?;
+
+                let latest_past_segment_id: usize = past_segments
+                    .last()
+                    .map(|segment| segment.id + 1)
+                    .get_or_insert(0)
+                    .clone();
+                current_segment
+                    .change_id(latest_past_segment_id)
+                    .map_err(|e| Error::wrap("error in changing id of current segment", e))?;
+
+                let new_segment_id = latest_past_segment_id + 1;
+                let new_segment = Segment::new(new_segment_id, &(*self.file_factory))?;
+                let latest_past_segment = replace(&mut (*current_segment), new_segment);
+
+                past_segments.push(latest_past_segment);
+                past_segments_len = past_segments.len();
+            }
+
+            if u64::try_from(past_segments_len).unwrap() > self.merging_threshold {
+                self.maybe_merge_past_segments_in_background();
+            }
+        }
+        Ok(())
     }
 }
 
@@ -94,7 +130,12 @@ where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
 {
-    pub fn new(dir_path: &str, merging_threshold: u64, file_factory: U) -> Result<Self, Error> {
+    pub fn new(
+        dir_path: &str,
+        merging_threshold: u64,
+        segment_creation_policy: SegmentCreationPolicy,
+        file_factory: U,
+    ) -> Result<Self, Error> {
         create_dir_all(dir_path)?;
 
         let mut segments = vec![];
@@ -113,45 +154,23 @@ where
 
         Ok(SegmentedDb {
             merging_threshold,
+            segment_creation_policy,
             past_segments_lock: Arc::new(RwLock::new(segments)),
             current_segment_lock: Arc::new(RwLock::new(current_segment)),
             file_factory: Arc::new(file_factory),
             join_handle: None,
         })
     }
-    fn maybe_create_new_segment(&mut self) -> Result<(), Error> {
+    fn maybe_create_fresh_segment(&mut self) -> Result<(), Error> {
         if is_thread_running(&self.join_handle) {
             return Ok(());
         }
-
-        if self.current_segment_lock.read()?.file.should_replace()? {
-            let past_segments_len;
-            {
-                let mut past_segments = self.past_segments_lock.write()?;
-                let mut current_segment = self.current_segment_lock.write()?;
-
-                let latest_past_segment_id: usize = past_segments
-                    .last()
-                    .map(|segment| segment.id + 1)
-                    .get_or_insert(0)
-                    .clone();
-                current_segment.change_id(latest_past_segment_id)?;
-
-                let new_segment_id = latest_past_segment_id + 1;
-                let new_segment = Segment::new(new_segment_id, &(*self.file_factory))?;
-                let latest_past_segment = replace(&mut (*current_segment), new_segment);
-
-                past_segments.push(latest_past_segment);
-                past_segments_len = past_segments.len();
-            }
-
-            if u64::try_from(past_segments_len).unwrap() >= self.merging_threshold {
-                self.merge_past_segments_in_background();
-            }
+        if let SegmentCreationPolicy::Automatic = self.segment_creation_policy {
+            self.create_fresh_segment()?
         }
         Ok(())
     }
-    fn merge_past_segments_in_background(&mut self) {
+    fn maybe_merge_past_segments_in_background(&mut self) {
         if is_thread_running(&self.join_handle) {
             return;
         }

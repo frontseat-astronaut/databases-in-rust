@@ -1,4 +1,8 @@
-use crate::{error::Error, kvdb::KVDb, segmented_db::SegmentedDb};
+use crate::{
+    error::Error,
+    kvdb::KVDb,
+    segmented_db::{SegmentCreationPolicy, SegmentedDb},
+};
 
 use self::segment_file::{Factory, File};
 
@@ -30,6 +34,7 @@ impl SegmentedLogsWithIndicesDb {
             segmented_db: SegmentedDb::<File, Factory>::new(
                 dir_path,
                 merging_threshold,
+                SegmentCreationPolicy::Automatic,
                 Factory {
                     dir_path: dir_path.to_owned(),
                     file_size_threshold,

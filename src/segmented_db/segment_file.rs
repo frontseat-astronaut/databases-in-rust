@@ -2,7 +2,9 @@ use crate::{error::Error, kvdb::KVEntry};
 
 pub trait SegmentFile {
     fn get_entry(&self, key: &str) -> Result<Option<KVEntry<String>>, Error>;
-    fn should_replace(&self) -> Result<bool, Error>;
+    fn ready_to_be_archived(&self) -> Result<bool, Error> {
+        Ok(true)
+    }
 
     fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error>;
     fn absorb(&mut self, other: &Self) -> Result<(), Error>;

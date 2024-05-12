@@ -24,8 +24,8 @@ impl SegmentFile for File {
             None => Ok(None),
         }
     }
-    fn should_replace(&self) -> Result<bool, Error> {
-        Ok(self.kvfile.size()? >= self.file_size_threshold)
+    fn ready_to_be_archived(&self) -> Result<bool, Error> {
+        Ok(self.kvfile.size()? > self.file_size_threshold)
     }
     fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
         self.kvfile.append_line(key, &entry).and_then(|offset| {
@@ -41,9 +41,7 @@ impl SegmentFile for File {
     fn absorb(&mut self, other: &Self) -> Result<(), Error> {
         for key in other.index.keys() {
             if self.index.get(key).is_none() {
-                if let Some(Present(value)) = other.get_entry(&key)? {
-                    self.add_entry(key.as_str(), &Present(value))?;
-                }
+                self.add_entry(key.as_str(), &other.get_entry(key)?.unwrap())?;
             }
         }
         Ok(())
