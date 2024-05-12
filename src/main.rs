@@ -32,6 +32,6 @@ fn main() {
     );
     segmented_logs_with_indices_db_test.run();
 
-    let mut sstable_test = Test::new(SSTable::new("db_files/sstable/", 3, 1, 3).unwrap());
+    let mut sstable_test = Test::new(SSTable::new("db_files/sstable/", 10, 50, 3).unwrap());
     sstable_test.run();
 }
