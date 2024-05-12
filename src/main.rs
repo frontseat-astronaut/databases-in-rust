@@ -3,6 +3,7 @@ use kvdb::test::Test;
 use log_db::LogDb;
 use log_with_index_db::LogWithIndexDb;
 use segmented_logs_with_indices_db::SegmentedLogsWithIndicesDb;
+use sstable::SSTable;
 
 mod error;
 mod in_memory_db;
@@ -12,6 +13,7 @@ mod log_db;
 mod log_with_index_db;
 mod segmented_db;
 mod segmented_logs_with_indices_db;
+mod sstable;
 mod utils;
 
 fn main() {
@@ -26,8 +28,10 @@ fn main() {
     log_with_index_db_test.run();
 
     let mut segmented_logs_with_indices_db_test = Test::new(
-        SegmentedLogsWithIndicesDb::new("db_files/segmented_logs_with_indices_db/", 100, 5)
-            .unwrap(),
+        SegmentedLogsWithIndicesDb::new("db_files/segmented_logs_with_indices_db/", 50, 2).unwrap(),
     );
     segmented_logs_with_indices_db_test.run();
+
+    let mut sstable_test = Test::new(SSTable::new("db_files/sstable/", 3, 1, 3).unwrap());
+    sstable_test.run();
 }
