@@ -105,9 +105,6 @@ impl SSTable {
         if is_thread_running(&self.join_handle) {
             return Ok(false);
         }
-        if let Some(handle) = self.join_handle.take() {
-            let _ = handle.join();
-        }
         {
             let mut tmp_memtable = self.tmp_memtable_lock.write()?;
             if tmp_memtable.is_empty() {
@@ -118,8 +115,8 @@ impl SSTable {
         Ok(false)
     }
     fn flush_tmp_memtable_in_background(&mut self) {
-        if is_thread_running(&self.join_handle) {
-            return;
+        if let Some(handle) = self.join_handle.take() {
+            let _ = handle.join();
         }
         let tmp_memtable_lock = Arc::clone(&self.tmp_memtable_lock);
         let segmented_files_db_lock = Arc::clone(&self.segmented_files_db_lock);
