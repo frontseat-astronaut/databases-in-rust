@@ -3,7 +3,7 @@ Things implemented so far:
 - Log DB: Simplest DB that stores key, value pairs in a single file.
 - Log DB with Hash index: Same DB as above but with an in-memory index that stores file offset for each key.
 - Segmented version of the above: This one stores the records over multiple segments, and a background process merges older segments to save disk space.
-- SSTable: A segmented files database where each segmented file has entries sorted by keys. This allows us to have a sparser index in memory. Moreover, it also maintains an in-memory sorted data structure which stores the most recent entries. 
+- SSTable: A segmented files database where each segment has entries sorted by keys. This allows us to have a sparser index in memory. That requires us to also maintain an in-memory sorted data structure which stores the most recent entries.
 
 All of the above are key-value stores that support set, get and delete.
 
