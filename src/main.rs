@@ -11,7 +11,7 @@ mod kv_file;
 mod kvdb;
 mod log_db;
 mod log_with_index_db;
-mod segmented_db;
+mod segmented_files_db;
 mod segmented_logs_with_indices_db;
 mod sstable;
 mod utils;

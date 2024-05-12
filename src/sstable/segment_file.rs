@@ -4,7 +4,7 @@ use crate::{
     error::Error,
     kv_file::KVFile,
     kvdb::KVEntry,
-    segmented_db::segment_file::{SegmentFile, SegmentFileFactory},
+    segmented_files_db::segment_file::{SegmentFile, SegmentFileFactory},
 };
 
 const TMP_FILE_NAME: &str = "merged_tmp_file.txt";

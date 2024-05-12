@@ -3,7 +3,7 @@ use crate::{
     in_memory_db::InMemoryDb,
     kv_file::KVFile,
     kvdb::KVEntry,
-    segmented_db::segment_file::{SegmentFile, SegmentFileFactory},
+    segmented_files_db::segment_file::{SegmentFile, SegmentFileFactory},
 };
 use KVEntry::{Deleted, Present};
 

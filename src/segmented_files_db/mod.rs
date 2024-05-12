@@ -25,7 +25,7 @@ pub enum SegmentCreationPolicy {
     Automatic,
 }
 
-pub struct SegmentedDb<T, U>
+pub struct SegmentedFilesDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
@@ -38,7 +38,7 @@ where
     join_handle: Option<JoinHandle<Result<(), Error>>>,
 }
 
-impl<T, U> SegmentedDb<T, U>
+impl<T, U> SegmentedFilesDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
@@ -113,7 +113,7 @@ where
     }
 }
 
-impl<T, U> Drop for SegmentedDb<T, U>
+impl<T, U> Drop for SegmentedFilesDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
@@ -125,7 +125,7 @@ where
     }
 }
 
-impl<T, U> SegmentedDb<T, U>
+impl<T, U> SegmentedFilesDb<T, U>
 where
     T: SegmentFile + Sync + Send + 'static,
     U: SegmentFileFactory<T> + Sync + Send + 'static,
@@ -152,7 +152,7 @@ where
             None => Segment::new(0, &file_factory)?,
         };
 
-        Ok(SegmentedDb {
+        Ok(SegmentedFilesDb {
             merging_threshold,
             segment_creation_policy,
             past_segments_lock: Arc::new(RwLock::new(segments)),
