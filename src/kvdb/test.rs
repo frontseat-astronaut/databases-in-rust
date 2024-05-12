@@ -29,16 +29,17 @@ impl<T: KVDb> Test<T> {
         self.set_key_value_for_test("k1", "v12");
         self.get_value_for_test("k1");
 
+        self.set_random_value_for_test("k4");
+        self.get_value_for_test("k4");
+
+        self.set_random_value_for_test("k3");
+        self.get_value_for_test("k3");
+
         self.set_key_value_for_test("k2", "v21");
         self.get_value_for_test("k2");
         self.delete_key_value_for_test("k2");
         self.get_value_for_test("k2");
 
-        self.set_random_value_for_test("k3");
-        self.get_value_for_test("k3");
-
-        self.set_random_value_for_test("k4");
-        self.get_value_for_test("k4");
         println!("");
     }
 
