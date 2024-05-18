@@ -6,6 +6,12 @@ pub trait KVDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error>;
     fn delete(&mut self, key: &str) -> Result<(), Error>;
     fn get(&self, key: &str) -> Result<Option<String>, Error>;
+    fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
+        match entry {
+            KVEntry::Deleted => self.delete(key),
+            KVEntry::Present(value) => self.set(key, &value),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
