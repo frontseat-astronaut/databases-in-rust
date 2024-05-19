@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::in_memory_db::InMemoryDb;
-use crate::kv_file::KVFile;
+use crate::kv_file::{KVFile, KVLine};
 use crate::kvdb::{KVDb, KVEntry};
 
 pub struct LogWithIndexDb {
@@ -31,13 +31,13 @@ impl LogWithIndexDb {
     pub fn new(dir_path: &str, file_name: &str) -> Result<LogWithIndexDb, Error> {
         let mut index = InMemoryDb::new();
         let file = KVFile::new(dir_path, file_name);
-        file.read_lines(&mut |parsed_key, parsed_entry, offset| {
-            match parsed_entry {
-                KVEntry::Present(_) => index.set(&parsed_key, &offset),
-                KVEntry::Deleted => index.delete(&parsed_key),
+        for line_result in file.iter()? {
+            let KVLine { key, entry, offset } = line_result?;
+            match entry {
+                KVEntry::Present(_) => index.set(&key, &offset),
+                KVEntry::Deleted => index.delete(&key),
             };
-            Ok(false)
-        })
-        .and(Ok(LogWithIndexDb { file, index }))
+        }
+        Ok(LogWithIndexDb { file, index })
     }
 }

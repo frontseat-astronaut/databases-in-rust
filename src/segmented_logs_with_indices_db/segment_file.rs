@@ -72,13 +72,13 @@ impl SegmentFileFactory<File> for Factory {
     fn from_disk(&self, file_name: &str) -> Result<File, Error> {
         let kvfile = KVFile::new(&self.dir_path, file_name);
         let mut index = InMemoryDb::new();
-        kvfile.read_lines(&mut |key, entry, offset| {
-            match entry {
-                Present(_) => index.set(&key, &Present(offset)),
-                Deleted => index.set(&key, &Deleted),
-            };
-            Ok(false)
-        })?;
+        for line_result in kvfile.iter()? {
+            let line = line_result?;
+            match line.entry {
+                Present(_) => index.set(&line.key, &Present(line.offset)),
+                Deleted => index.set(&line.key, &Deleted),
+            }
+        }
         Ok(File {
             kvfile,
             index,

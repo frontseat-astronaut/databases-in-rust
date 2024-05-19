@@ -12,21 +12,18 @@ impl KVDb for LogDb {
             .append_line(key, &KVEntry::Present(value.to_owned()))
             .and(Ok(()))
     }
-
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.file.append_line(key, &KVEntry::Deleted).and(Ok(()))
     }
-
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut value = None;
-        self.file
-            .read_lines(&mut |parsed_key, parsed_entry, _| {
-                if parsed_key == key {
-                    value = parsed_entry.into();
-                }
-                Ok(false)
-            })
-            .and(Ok(value))
+        for line_result in self.file.iter()? {
+            let line = line_result?;
+            if line.key == key {
+                value = line.entry.into();
+            }
+        }
+        Ok(value)
     }
 }
 

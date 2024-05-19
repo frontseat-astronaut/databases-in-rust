@@ -2,7 +2,7 @@ use std::mem::replace;
 
 use crate::{
     error::Error,
-    kv_file::KVFile,
+    kv_file::{KVFile, KVLine},
     kvdb::KVEntry,
     segmented_files_db::segment_file::{SegmentFile, SegmentFileFactory},
 };
@@ -39,58 +39,62 @@ impl SegmentFile for File {
         let (_, start_offset) = self.sparse_index.get(index).unwrap();
 
         let mut value = None;
-        self.kvfile.read_lines_from_offset(
-            &mut |this_key, this_entry, _| {
-                if this_key.as_str() > key {
-                    return Ok(true);
-                }
-                if this_key == key {
-                    value = Some(this_entry)
-                }
-                Ok(false)
-            },
-            *start_offset,
-        )?;
+        for line_result in self.kvfile.iter_from_offset(*start_offset)? {
+            let line = line_result?;
+            if line.key.as_str() > key {
+                break;
+            }
+            if line.key == key {
+                value = Some(line.entry)
+            }
+        }
         Ok(value)
     }
     fn absorb(&mut self, other: &Self) -> Result<(), Error> {
         let mut new_file = KVFile::new(&self.dir_path, TMP_FILE_NAME);
 
-        let mut this_reader = self.kvfile.get_reader()?;
-        let mut this_buf = this_reader.read_line()?;
+        let mut this_iter = self.kvfile.iter()?;
+        let mut this_buf = this_iter.try_next()?;
 
-        let mut other_reader = other.kvfile.get_reader()?;
-        let mut other_buf = other_reader.read_line()?;
+        let mut other_iter = other.kvfile.iter()?;
+        let mut other_buf = other_iter.try_next()?;
 
         let mut writer_buf = None;
 
         loop {
             let use_other = match &this_buf {
                 None => true,
-                Some((this_key, _)) => match &other_buf {
+                Some(KVLine { key: this_key, .. }) => match &other_buf {
                     None => false,
-                    Some((other_key, _)) => this_key >= other_key,
+                    Some(KVLine { key: other_key, .. }) => this_key >= other_key,
                 },
             };
-            let (buf, reader) = match use_other {
-                true => (&mut other_buf, &mut other_reader),
-                false => (&mut this_buf, &mut this_reader),
+            let (buf, iter) = match use_other {
+                true => (&mut other_buf, &mut other_iter),
+                false => (&mut this_buf, &mut this_iter),
             };
 
-            let prev_writer_buf = replace(&mut writer_buf, replace(buf, reader.read_line()?));
+            let prev_writer_buf = replace(&mut writer_buf, replace(buf, iter.try_next()?));
             match prev_writer_buf {
                 None => {
                     if writer_buf.is_none() {
                         break;
                     }
                 }
-                Some((ref prev_key, ref prev_entry)) => {
+                Some(KVLine {
+                    key: ref prev_key,
+                    entry: prev_entry,
+                    ..
+                }) => {
                     let should_write = match writer_buf {
                         None => true,
-                        Some((ref current_key, _)) => current_key > prev_key,
+                        Some(KVLine {
+                            key: ref current_key,
+                            ..
+                        }) => current_key > prev_key,
                     };
                     if should_write {
-                        new_file.append_line(prev_key, prev_entry)?;
+                        new_file.append_line(&prev_key, &prev_entry)?;
                     }
                 }
             };
@@ -132,13 +136,13 @@ impl SegmentFileFactory<File> for Factory {
 
         let mut last_indexed_offset = 0;
         let mut sparse_index = vec![];
-        kvfile.read_lines(&mut |key, _, offset| {
+        for line_result in kvfile.iter()? {
+            let KVLine { key, offset, .. } = line_result?;
             if sparse_index.is_empty() || offset - last_indexed_offset > self.sparsity {
                 sparse_index.push((key.to_owned(), offset));
                 last_indexed_offset = offset;
             }
-            Ok(false)
-        })?;
+        }
 
         Ok(File {
             dir_path: self.dir_path.clone(),
