@@ -49,7 +49,7 @@ impl SegmentFile for File {
     fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
         self.kvfile.rename(new_file_name)
     }
-    fn delete(self) -> Result<(), Error> {
+    fn delete(mut self) -> Result<(), Error> {
         self.kvfile.delete()
     }
 }

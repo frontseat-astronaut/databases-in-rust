@@ -64,7 +64,7 @@ impl KVFile {
         }
         Ok(value)
     }
-    pub fn delete(self) -> Result<(), Error> {
+    pub fn delete(&mut self) -> Result<(), Error> {
         let file_path = self.get_file_path();
         match fs::remove_file(file_path) {
             Ok(()) => Ok(()),

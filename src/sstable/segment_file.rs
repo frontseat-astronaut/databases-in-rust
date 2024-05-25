@@ -100,7 +100,7 @@ impl SegmentFile for File {
             };
         }
 
-        let old_file = replace(&mut self.kvfile, new_file);
+        let mut old_file = replace(&mut self.kvfile, new_file);
         let file_name = old_file.file_name.clone();
         old_file.delete()?;
         self.kvfile.rename(&file_name)?;
@@ -110,7 +110,7 @@ impl SegmentFile for File {
     fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
         self.kvfile.rename(new_file_name)
     }
-    fn delete(self) -> Result<(), Error> {
+    fn delete(mut self) -> Result<(), Error> {
         self.kvfile.delete()
     }
 }
