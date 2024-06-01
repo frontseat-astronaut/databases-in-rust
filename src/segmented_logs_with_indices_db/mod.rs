@@ -13,6 +13,9 @@ pub struct SegmentedLogsWithIndicesDb {
 }
 
 impl KVDb for SegmentedLogsWithIndicesDb {
+    fn name(&self) -> String {
+        "Segmented log files with indices DB".to_string()
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.segmented_files_db.set(key, value)
     }

@@ -1,16 +1,74 @@
 use super::KVDb;
-use rand;
 use rand::Rng;
+use std::time::{Duration, SystemTime};
 
-pub struct Test<T: KVDb> {
-    db: T,
+pub struct Test {
+    db: Box<dyn KVDb>,
 }
 
-impl<T: KVDb> Test<T> {
-    pub fn new(db: T) -> Test<T> {
+impl Test {
+    pub fn new(db: Box<dyn KVDb>) -> Test {
         Test { db }
     }
 
+    pub fn test_updates(&mut self, num_keys: u32, num_operations: u32, read_write_ratio: f32) {
+        enum Operation {
+            Read(String),
+            Write(String, String),
+        }
+
+        println!(
+            "Testing {} operations on {} keys, with a Read/Write ratio of {}",
+            num_operations, num_keys, read_write_ratio
+        );
+        let setup_start_time = SystemTime::now();
+        let mut key_vector = vec![];
+        for i in 1..=num_keys {
+            key_vector.push(format!("key{}", i));
+        }
+        let mut operation_vector = vec![];
+        let mut num_reads = (read_write_ratio * num_operations as f32) as u32;
+        let mut num_writes = num_operations - num_reads;
+        for _ in 1..num_operations {
+            let rand_key_index = rand::thread_rng().gen_range(0..num_keys) as usize;
+            let random_choice = rand::thread_rng().gen_range(0..2);
+            if (random_choice == 0 && num_reads > 0) || (num_writes == 0) {
+                operation_vector.push(Operation::Read(key_vector[rand_key_index].clone()));
+                num_reads = num_reads - 1;
+            } else {
+                operation_vector.push(Operation::Write(
+                    key_vector[rand_key_index].clone(),
+                    Self::create_random_value(),
+                ));
+                num_writes = num_writes - 1;
+            }
+        }
+        print!(
+            "It took {:?} for setup. ",
+            setup_start_time.elapsed().unwrap()
+        );
+
+        let mut read_times = Duration::new(0, 0);
+        let mut write_times = Duration::new(0, 0);
+        for op in operation_vector {
+            match op {
+                Operation::Read(key) => {
+                    let read_start_time = SystemTime::now();
+                    self.db.get(&key).unwrap();
+                    read_times += read_start_time.elapsed().unwrap();
+                }
+                Operation::Write(key, value) => {
+                    let write_start_time = SystemTime::now();
+                    self.db.set(&key, &value).unwrap();
+                    write_times += write_start_time.elapsed().unwrap();
+                }
+            }
+        }
+        println!(
+            "It took {:?} for reads and {:?} for writes",
+            read_times, write_times
+        );
+    }
     pub fn run(&mut self) {
         println!("starting test");
         self.get_value_for_test("k1");

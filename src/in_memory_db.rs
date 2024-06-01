@@ -6,6 +6,9 @@ pub struct InMemoryDb<T: Clone> {
 }
 
 impl KVDb for InMemoryDb<String> {
+    fn name(&self) -> String {
+        "In-Memory DB".to_string()
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         Ok(Self::set(self, key, &value.to_string()))
     }
@@ -13,7 +16,7 @@ impl KVDb for InMemoryDb<String> {
         Ok(Self::delete(self, key))
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        Ok(Self::get(self, key))
+        Ok(self.get(key))
     }
 }
 

@@ -37,6 +37,9 @@ pub struct SSTable {
 }
 
 impl KVDb for SSTable {
+    fn name(&self) -> String {
+        "SS Table".to_string()
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.flush_memtable_if_big().and_then(|_| {
             let entry = Present(value.to_string());

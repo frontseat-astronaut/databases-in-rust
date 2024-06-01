@@ -7,6 +7,9 @@ pub struct LogDb {
 }
 
 impl KVDb for LogDb {
+    fn name(&self) -> String {
+        "Log DB".to_string()
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
             .append_line(key, &KVEntry::Present(value.to_owned()))

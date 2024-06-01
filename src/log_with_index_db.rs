@@ -9,6 +9,9 @@ pub struct LogWithIndexDb {
 }
 
 impl KVDb for LogWithIndexDb {
+    fn name(&self) -> String {
+        "Log with index DB".to_string()
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
             .append_line(key, &KVEntry::Present(value.to_string()))
