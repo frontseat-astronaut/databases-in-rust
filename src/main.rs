@@ -17,7 +17,7 @@ mod sstable;
 mod utils;
 
 const NUM_KEYS: u32 = 100;
-const NUM_OPERATIONS: u32 = 1000000;
+const NUM_OPERATIONS: u32 = 100000;
 const READ_WRITE_RATIO: f32 = 0.995;
 
 fn main() {

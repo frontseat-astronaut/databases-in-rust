@@ -49,24 +49,29 @@ impl Test {
         );
 
         let mut read_times = Duration::new(0, 0);
+        let mut num_reads = 0;
         let mut write_times = Duration::new(0, 0);
+        let mut num_writes = 0;
         for op in operation_vector {
             match op {
                 Operation::Read(key) => {
                     let read_start_time = SystemTime::now();
                     self.db.get(&key).unwrap();
                     read_times += read_start_time.elapsed().unwrap();
+                    num_reads += 1;
                 }
                 Operation::Write(key, value) => {
                     let write_start_time = SystemTime::now();
                     self.db.set(&key, &value).unwrap();
                     write_times += write_start_time.elapsed().unwrap();
+                    num_writes += 1;
                 }
             }
         }
         println!(
             "It took {:?} for reads and {:?} for writes",
-            read_times, write_times
+            read_times / num_reads,
+            write_times / num_writes
         );
     }
     pub fn run(&mut self) {
