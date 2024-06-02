@@ -14,6 +14,7 @@ mod utils;
 const DELIMITER: &str = ",";
 const TOMBSTONE: &str = "🪦";
 
+#[derive(Debug)]
 pub struct KVLine {
     pub key: String,
     pub status: KeyStatus<String>,
@@ -57,12 +58,11 @@ impl KVFile {
         })
     }
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
-        let mut status = None;
         for line_result in self.iter_from_offset(offset)? {
             let line = line_result?;
-            status = line.status.into();
+            return Ok(line.status.into());
         }
-        Ok(status)
+        Ok(None)
     }
     pub fn delete(&mut self) -> Result<(), Error> {
         let file_path = self.get_file_path();

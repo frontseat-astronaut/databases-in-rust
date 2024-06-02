@@ -20,11 +20,6 @@ mod sstable;
 mod test;
 mod utils;
 
-const NUM_KEYS: u32 = 10000;
-const NUM_OPERATIONS: u32 = 10000;
-const READ_WRITE_RATIO: f32 = 0.5;
-const SET_DELETE_RATIO: f32 = 1.0;
-
 fn main() {
     let mut dbs: VecDeque<Box<dyn KVDb>> = VecDeque::new();
     dbs.push_back(Box::new(InMemoryDb::new()));
@@ -68,8 +63,7 @@ fn main() {
         }
     }
 
-    let correctness_test_suite =
-        CorrectnessTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO, SET_DELETE_RATIO);
+    let correctness_test_suite = CorrectnessTest::new(1000, 1000, 0.5, 0.8);
     print!("\n\n");
     while !dbs.is_empty() {
         let mut db = dbs.pop_front().unwrap();
@@ -77,8 +71,7 @@ fn main() {
         print!("\n\n");
     }
 
-    // let latency_test_suite =
-    //     LatencyTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO, SET_DELETE_RATIO);
+    // let latency_test_suite = LatencyTest::new(10000, 10000, 0.5, 0.8);
     // print!("\n\n");
     // while !dbs.is_empty() {
     //     let mut db = dbs.pop_front().unwrap();
