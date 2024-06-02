@@ -11,14 +11,14 @@ impl Test {
         Test { db }
     }
 
-    pub fn test_updates(&mut self, num_keys: u32, num_operations: u32, read_write_ratio: f32) {
+    pub fn latency_check(&mut self, num_keys: u32, num_operations: u32, read_write_ratio: f32) {
         enum Operation {
             Read(String),
             Write(String, String),
         }
 
         println!(
-            "Testing {} operations on {} keys, with a Read/Write ratio of {}",
+            "Running latency check with {} operations on {} keys, with a Read/Write ratio of {}",
             num_operations, num_keys, read_write_ratio
         );
         let setup_start_time = SystemTime::now();
@@ -43,8 +43,8 @@ impl Test {
                 num_writes = num_writes - 1;
             }
         }
-        print!(
-            "It took {:?} for setup. ",
+        println!(
+            "Finished test suite setup in {:?}",
             setup_start_time.elapsed().unwrap()
         );
 
@@ -52,6 +52,7 @@ impl Test {
         let mut num_reads = 0;
         let mut write_times = Duration::new(0, 0);
         let mut num_writes = 0;
+        let db_ops_start_time = SystemTime::now();
         for op in operation_vector {
             match op {
                 Operation::Read(key) => {
@@ -69,10 +70,12 @@ impl Test {
             }
         }
         println!(
-            "It took {:?} for reads and {:?} for writes",
-            read_times / num_reads,
-            write_times / num_writes
+            "Finished running DB operations in {:?}",
+            db_ops_start_time.elapsed().unwrap()
         );
+        println!("Average latencies per operation:");
+        println!("  Read: {:?}", read_times / num_reads,);
+        println!("  Write: {:?}", write_times / num_writes,);
     }
     pub fn run(&mut self) {
         println!("starting test");

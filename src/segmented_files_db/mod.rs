@@ -32,8 +32,8 @@ where
 {
     merging_threshold: u64,
     segment_creation_policy: SegmentCreationPolicy,
-    past_segments_lock: Arc<RwLock<Vec<Segment<T>>>>,
-    current_segment_lock: Arc<RwLock<Segment<T>>>,
+    locked_past_segments: Arc<RwLock<Vec<Segment<T>>>>,
+    locked_current_segment: Arc<RwLock<Segment<T>>>,
     file_factory: Arc<U>,
     join_handle: Option<JoinHandle<Result<(), Error>>>,
 }
@@ -45,7 +45,7 @@ where
 {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
-        self.current_segment_lock
+        self.locked_current_segment
             .write()
             .map_err(Error::from)
             .and_then(|mut current_segment| {
@@ -56,19 +56,19 @@ where
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
-        self.current_segment_lock
+        self.locked_current_segment
             .write()
             .map_err(Error::from)
             .and_then(|mut current_segment| current_segment.file.add_entry(key, &Deleted))
     }
     pub fn get(&self, key: &str) -> Result<Option<String>, Error> {
         {
-            let current_segment = self.current_segment_lock.read()?;
+            let current_segment = self.locked_current_segment.read()?;
             check_kvdb_entry!(current_segment.file.get_entry(key)?);
         }
 
         {
-            let past_segments = self.past_segments_lock.read()?;
+            let past_segments = self.locked_past_segments.read()?;
             for segment in past_segments.iter().rev() {
                 check_kvdb_entry!(segment.file.get_entry(key)?);
             }
@@ -78,15 +78,15 @@ where
     }
     pub fn create_fresh_segment(&mut self) -> Result<(), Error> {
         if self
-            .current_segment_lock
+            .locked_current_segment
             .read()?
             .file
             .ready_to_be_archived()?
         {
             let past_segments_len;
             {
-                let mut past_segments = self.past_segments_lock.write()?;
-                let mut current_segment = self.current_segment_lock.write()?;
+                let mut past_segments = self.locked_past_segments.write()?;
+                let mut current_segment = self.locked_current_segment.write()?;
 
                 let latest_past_segment_id: usize = past_segments
                     .last()
@@ -155,8 +155,8 @@ where
         Ok(SegmentedFilesDb {
             merging_threshold,
             segment_creation_policy,
-            past_segments_lock: Arc::new(RwLock::new(segments)),
-            current_segment_lock: Arc::new(RwLock::new(current_segment)),
+            locked_past_segments: Arc::new(RwLock::new(segments)),
+            locked_current_segment: Arc::new(RwLock::new(current_segment)),
             file_factory: Arc::new(file_factory),
             join_handle: None,
         })
@@ -175,17 +175,17 @@ where
             return;
         }
 
-        let past_segments_lock = Arc::clone(&self.past_segments_lock);
+        let locked_past_segments = Arc::clone(&self.locked_past_segments);
         let file_factory = Arc::clone(&self.file_factory);
         self.join_handle = Some(spawn(move || -> Result<(), Error> {
             let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
-            for segment in past_segments_lock.read()?.iter().rev() {
+            for segment in locked_past_segments.read()?.iter().rev() {
                 merged_segment_file.absorb(&segment.file)?;
             }
 
             {
-                let mut past_segments = past_segments_lock.write()?;
+                let mut past_segments = locked_past_segments.write()?;
                 while !past_segments.is_empty() {
                     let past_segment = past_segments.pop().unwrap();
                     past_segment.file.delete()?;

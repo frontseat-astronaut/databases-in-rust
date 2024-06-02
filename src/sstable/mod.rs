@@ -30,9 +30,9 @@ pub struct SSTable {
     memtable_size_threshold: usize,
     memtable: Memtable,
     memtable_backup: KVFile,
-    tmp_memtable_lock: Arc<RwLock<Memtable>>,
-    tmp_memtable_backup_lock: Arc<RwLock<KVFile>>,
-    segmented_files_db_lock: Arc<RwLock<SegmentedFilesDb<File, Factory>>>,
+    locked_tmp_memtable: Arc<RwLock<Memtable>>,
+    locked_tmp_memtable_backup: Arc<RwLock<KVFile>>,
+    locked_segmented_files_db: Arc<RwLock<SegmentedFilesDb<File, Factory>>>,
     join_handle: Option<JoinHandle<()>>,
 }
 
@@ -62,10 +62,10 @@ impl KVDb for SSTable {
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         check_kvdb_entry!(self.memtable.get(key));
         {
-            let tmp_memtable = self.tmp_memtable_lock.read()?;
+            let tmp_memtable = self.locked_tmp_memtable.read()?;
             check_kvdb_entry!(tmp_memtable.get(key));
         }
-        self.segmented_files_db_lock.read()?.get(key)
+        self.locked_segmented_files_db.read()?.get(key)
     }
 }
 
@@ -92,17 +92,19 @@ impl SSTable {
             memtable_size_threshold,
             memtable,
             memtable_backup,
-            tmp_memtable_lock: Arc::new(RwLock::new(tmp_memtable)),
-            tmp_memtable_backup_lock: Arc::new(RwLock::new(tmp_memtable_backup)),
-            segmented_files_db_lock: Arc::new(RwLock::new(SegmentedFilesDb::<File, Factory>::new(
-                dir_path,
-                merging_threshold,
-                SegmentCreationPolicy::Triggered,
-                Factory {
-                    dir_path: dir_path.to_owned(),
-                    sparsity,
-                },
-            )?)),
+            locked_tmp_memtable: Arc::new(RwLock::new(tmp_memtable)),
+            locked_tmp_memtable_backup: Arc::new(RwLock::new(tmp_memtable_backup)),
+            locked_segmented_files_db: Arc::new(RwLock::new(
+                SegmentedFilesDb::<File, Factory>::new(
+                    dir_path,
+                    merging_threshold,
+                    SegmentCreationPolicy::Triggered,
+                    Factory {
+                        dir_path: dir_path.to_owned(),
+                        sparsity,
+                    },
+                )?,
+            )),
             join_handle: None,
         })
     }
@@ -121,7 +123,7 @@ impl SSTable {
         }
         let should_move;
         {
-            let mut tmp_memtable = self.tmp_memtable_lock.write()?;
+            let mut tmp_memtable = self.locked_tmp_memtable.write()?;
             should_move = tmp_memtable.is_empty();
             if should_move {
                 swap(&mut (*tmp_memtable), &mut self.memtable);
@@ -138,31 +140,31 @@ impl SSTable {
         if let Some(handle) = self.join_handle.take() {
             let _ = handle.join();
         }
-        let tmp_memtable_lock = Arc::clone(&self.tmp_memtable_lock);
-        let tmp_memtable_backup_lock = Arc::clone(&self.tmp_memtable_backup_lock);
-        let segmented_files_db_lock = Arc::clone(&self.segmented_files_db_lock);
+        let locked_tmp_memtable = Arc::clone(&self.locked_tmp_memtable);
+        let locked_tmp_memtable_backup = Arc::clone(&self.locked_tmp_memtable_backup);
+        let locked_segmented_files_db = Arc::clone(&self.locked_segmented_files_db);
         self.join_handle = Some(spawn(move || {
             if let Err(e) = Self::flush_tmp_memtable(
-                tmp_memtable_lock,
-                tmp_memtable_backup_lock,
-                segmented_files_db_lock,
+                locked_tmp_memtable,
+                locked_tmp_memtable_backup,
+                locked_segmented_files_db,
             ) {
                 println!("error in flushing memtable: {}", e);
             }
         }));
     }
     fn flush_tmp_memtable(
-        tmp_memtable_lock: Arc<RwLock<Memtable>>,
-        tmp_memtable_backup_lock: Arc<RwLock<KVFile>>,
-        segmented_files_db_lock: Arc<RwLock<SegmentedFilesDb<File, Factory>>>,
+        locked_tmp_memtable: Arc<RwLock<Memtable>>,
+        locked_tmp_memtable_backup: Arc<RwLock<KVFile>>,
+        locked_segmented_files_db: Arc<RwLock<SegmentedFilesDb<File, Factory>>>,
     ) -> Result<(), Error> {
         {
-            let tmp_memtable = tmp_memtable_lock.read()?;
+            let tmp_memtable = locked_tmp_memtable.read()?;
             if tmp_memtable.is_empty() {
                 return Ok(());
             }
 
-            let mut segmented_files_db = segmented_files_db_lock.write()?;
+            let mut segmented_files_db = locked_segmented_files_db.write()?;
             segmented_files_db
                 .create_fresh_segment()
                 .map_err(|e| Error::wrap("error in creating fresh segment", e))?;
@@ -174,14 +176,14 @@ impl SSTable {
                 }
             }
         }
-        tmp_memtable_lock.write()?.clear();
-        tmp_memtable_backup_lock.write()?.delete()?;
+        locked_tmp_memtable.write()?.clear();
+        locked_tmp_memtable_backup.write()?.delete()?;
 
         Ok(())
     }
     fn swap_memtable_backup_files(&mut self) -> Result<(), Error> {
         {
-            let mut tmp_memtable_backup = self.tmp_memtable_backup_lock.write()?;
+            let mut tmp_memtable_backup = self.locked_tmp_memtable_backup.write()?;
             swap(&mut (*tmp_memtable_backup), &mut self.memtable_backup);
             self.memtable_backup.rename("TMP_FILE.txt")?;
             tmp_memtable_backup.rename(TMP_MEMTABLE_BACKUP_FILE_NAME)?;

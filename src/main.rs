@@ -17,8 +17,8 @@ mod sstable;
 mod utils;
 
 const NUM_KEYS: u32 = 100;
-const NUM_OPERATIONS: u32 = 100000;
-const READ_WRITE_RATIO: f32 = 0.995;
+const NUM_OPERATIONS: u32 = 10000;
+const READ_WRITE_RATIO: f32 = 0.5;
 
 fn main() {
     let mut dbs: Vec<Box<dyn KVDb>> = vec![
@@ -31,7 +31,7 @@ fn main() {
         let db = dbs.pop().unwrap();
         println!("-------Running test suite for {}-------", db.name());
         let mut test = Test::new(db);
-        test.test_updates(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+        test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
         print!("\n\n");
     }
 
@@ -49,12 +49,16 @@ fn main() {
                 )
                 .unwrap(),
             ));
-            segmented_logs_with_indices_db_test.test_updates(100, 1000000, 0.5);
+            segmented_logs_with_indices_db_test.latency_check(
+                NUM_KEYS,
+                NUM_OPERATIONS,
+                READ_WRITE_RATIO,
+            );
         }
     }
 
-    let mut sstable_test = Test::new(Box::new(
-        SSTable::new("db_files/sstable/", 10, 50, 3).unwrap(),
-    ));
-    sstable_test.run();
+    // let mut sstable_test = Test::new(Box::new(
+    //     SSTable::new("db_files/sstable/", 10, 50, 3).unwrap(),
+    // ));
+    // sstable_test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
 }
