@@ -3,7 +3,7 @@ use std::mem::replace;
 use crate::{
     error::Error,
     kv_file::{KVFile, KVLine},
-    kvdb::KVEntry,
+    kvdb::KeyStatus,
     segmented_files_db::segment_file::{SegmentFile, SegmentFileFactory},
 };
 
@@ -18,8 +18,8 @@ pub struct File {
 }
 
 impl SegmentFile for File {
-    fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
-        self.kvfile.append_line(key, entry).and_then(|offset| {
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+        self.kvfile.append_line(key, status).and_then(|offset| {
             if self.sparse_index.is_empty() || offset - self.last_indexed_offset > self.sparsity {
                 self.sparse_index.push((key.to_owned(), offset));
                 self.last_indexed_offset = offset;
@@ -27,7 +27,7 @@ impl SegmentFile for File {
             Ok(())
         })
     }
-    fn get_entry(&self, key: &str) -> Result<Option<KVEntry<String>>, Error> {
+    fn get_status(&self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
         let index = match self
             .sparse_index
             .binary_search_by(|(this_key, _)| this_key.cmp(&key.to_string()))
@@ -38,17 +38,17 @@ impl SegmentFile for File {
         };
         let (_, start_offset) = self.sparse_index.get(index).unwrap();
 
-        let mut value = None;
+        let mut status = None;
         for line_result in self.kvfile.iter_from_offset(*start_offset)? {
             let line = line_result?;
             if line.key.as_str() > key {
                 break;
             }
             if line.key == key {
-                value = Some(line.entry)
+                status = Some(line.status)
             }
         }
-        Ok(value)
+        Ok(status)
     }
     fn absorb(&mut self, other: &Self) -> Result<(), Error> {
         let mut new_file = KVFile::new(&self.dir_path, TMP_FILE_NAME);
@@ -83,7 +83,7 @@ impl SegmentFile for File {
                 }
                 Some(KVLine {
                     key: ref prev_key,
-                    entry: prev_entry,
+                    status: prev_status,
                     ..
                 }) => {
                     let should_write = match writer_buf {
@@ -94,7 +94,7 @@ impl SegmentFile for File {
                         }) => current_key > prev_key,
                     };
                     if should_write {
-                        new_file.append_line(&prev_key, &prev_entry)?;
+                        new_file.append_line(&prev_key, &prev_status)?;
                     }
                 }
             };

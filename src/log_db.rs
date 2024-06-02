@@ -1,6 +1,6 @@
 use crate::error::Error;
 use crate::kv_file::KVFile;
-use crate::kvdb::{KVDb, KVEntry};
+use crate::kvdb::{KVDb, KeyStatus};
 
 pub struct LogDb {
     file: KVFile,
@@ -12,18 +12,18 @@ impl KVDb for LogDb {
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.file
-            .append_line(key, &KVEntry::Present(value.to_owned()))
+            .append_line(key, &KeyStatus::Present(value.to_owned()))
             .and(Ok(()))
     }
     fn delete(&mut self, key: &str) -> Result<(), Error> {
-        self.file.append_line(key, &KVEntry::Deleted).and(Ok(()))
+        self.file.append_line(key, &KeyStatus::Deleted).and(Ok(()))
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
         let mut value = None;
         for line_result in self.file.iter()? {
             let line = line_result?;
             if line.key == key {
-                value = line.entry.into();
+                value = line.status.into();
             }
         }
         Ok(value)

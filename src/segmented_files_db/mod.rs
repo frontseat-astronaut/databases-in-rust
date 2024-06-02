@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-    check_kvdb_entry,
+    check_key_status,
     error::Error,
-    kvdb::KVEntry::{Deleted, Present},
+    kvdb::KeyStatus::{Deleted, Present},
     utils::{is_thread_running, process_dir_contents},
 };
 
@@ -51,7 +51,7 @@ where
             .and_then(|mut current_segment| {
                 current_segment
                     .file
-                    .add_entry(key, &Present(value.to_owned()))
+                    .set_status(key, &Present(value.to_owned()))
             })
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
@@ -59,18 +59,18 @@ where
         self.locked_current_segment
             .write()
             .map_err(Error::from)
-            .and_then(|mut current_segment| current_segment.file.add_entry(key, &Deleted))
+            .and_then(|mut current_segment| current_segment.file.set_status(key, &Deleted))
     }
     pub fn get(&self, key: &str) -> Result<Option<String>, Error> {
         {
             let current_segment = self.locked_current_segment.read()?;
-            check_kvdb_entry!(current_segment.file.get_entry(key)?);
+            check_key_status!(current_segment.file.get_status(key)?);
         }
 
         {
             let past_segments = self.locked_past_segments.read()?;
             for segment in past_segments.iter().rev() {
-                check_kvdb_entry!(segment.file.get_entry(key)?);
+                check_key_status!(segment.file.get_status(key)?);
             }
         }
 

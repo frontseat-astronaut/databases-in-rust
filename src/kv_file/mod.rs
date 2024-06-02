@@ -3,7 +3,7 @@ use std::io::{self, ErrorKind, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 
 use crate::error::Error;
-use crate::kvdb::KVEntry;
+use crate::kvdb::KeyStatus;
 
 use self::iterator::KVFileIterator;
 use self::utils::write_line;
@@ -16,7 +16,7 @@ const TOMBSTONE: &str = "🪦";
 
 pub struct KVLine {
     pub key: String,
-    pub entry: KVEntry<String>,
+    pub status: KeyStatus<String>,
     pub offset: u64,
 }
 
@@ -49,20 +49,20 @@ impl KVFile {
             Ok(metadata.size())
         })
     }
-    pub fn append_line(&mut self, key: &str, value: &KVEntry<String>) -> Result<u64, Error> {
+    pub fn append_line(&mut self, key: &str, status: &KeyStatus<String>) -> Result<u64, Error> {
         self.open_file(false, true).and_then(|maybe_file| {
             let mut file = maybe_file.unwrap();
             let pos = file.seek(SeekFrom::End(0))?;
-            write_line(&mut file, key, value).and(Ok(pos))
+            write_line(&mut file, key, status).and(Ok(pos))
         })
     }
     pub fn get_at_offset(&self, offset: u64) -> Result<Option<String>, Error> {
-        let mut value = None;
+        let mut status = None;
         for line_result in self.iter_from_offset(offset)? {
             let line = line_result?;
-            value = line.entry.into();
+            status = line.status.into();
         }
-        Ok(value)
+        Ok(status)
     }
     pub fn delete(&mut self) -> Result<(), Error> {
         let file_path = self.get_file_path();

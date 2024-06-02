@@ -6,12 +6,12 @@ use std::{
 };
 
 use crate::{
-    check_kvdb_entry,
+    check_key_status,
     error::Error,
     kv_file::KVFile,
     kvdb::{
         KVDb,
-        KVEntry::{self, Deleted, Present},
+        KeyStatus::{self, Deleted, Present},
     },
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
     utils::is_thread_running,
@@ -24,7 +24,7 @@ const TMP_MEMTABLE_BACKUP_FILE_NAME: &str = "tmp_memtable_backup.txt";
 
 mod segment_file;
 
-type Memtable = BTreeMap<String, KVEntry<String>>;
+type Memtable = BTreeMap<String, KeyStatus<String>>;
 
 pub struct SSTable {
     memtable_size_threshold: usize,
@@ -42,11 +42,11 @@ impl KVDb for SSTable {
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.flush_memtable_if_big().and_then(|_| {
-            let entry = Present(value.to_string());
-            if let Err(e) = self.memtable_backup.append_line(key, &entry) {
+            let status = Present(value.to_string());
+            if let Err(e) = self.memtable_backup.append_line(key, &status) {
                 println!("error in writing to memtable backup: {}", e);
             }
-            self.memtable.insert(key.to_string(), entry);
+            self.memtable.insert(key.to_string(), status);
             Ok(())
         })
     }
@@ -60,10 +60,10 @@ impl KVDb for SSTable {
         })
     }
     fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        check_kvdb_entry!(self.memtable.get(key));
+        check_key_status!(self.memtable.get(key));
         {
             let tmp_memtable = self.locked_tmp_memtable.read()?;
-            check_kvdb_entry!(tmp_memtable.get(key));
+            check_key_status!(tmp_memtable.get(key));
         }
         self.locked_segmented_files_db.read()?.get(key)
     }
@@ -169,8 +169,8 @@ impl SSTable {
                 .create_fresh_segment()
                 .map_err(|e| Error::wrap("error in creating fresh segment", e))?;
 
-            for (key, entry) in tmp_memtable.iter() {
-                match entry {
+            for (key, status) in tmp_memtable.iter() {
+                match status {
                     Present(value) => segmented_files_db.set(key, value)?,
                     Deleted => segmented_files_db.delete(key)?,
                 }
@@ -199,7 +199,7 @@ impl SSTable {
         let mut memtable = Memtable::new();
         for line_result in backup.iter()? {
             let line = line_result?;
-            memtable.insert(line.key, line.entry);
+            memtable.insert(line.key, line.status);
         }
         Ok((memtable, backup))
     }

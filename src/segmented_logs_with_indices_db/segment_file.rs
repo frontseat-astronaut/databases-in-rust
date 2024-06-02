@@ -2,19 +2,19 @@ use crate::{
     error::Error,
     in_memory_db::InMemoryDb,
     kv_file::KVFile,
-    kvdb::KVEntry,
+    kvdb::KeyStatus,
     segmented_files_db::segment_file::{SegmentFile, SegmentFileFactory},
 };
-use KVEntry::{Deleted, Present};
+use KeyStatus::{Deleted, Present};
 
 pub struct File {
     kvfile: KVFile,
-    index: InMemoryDb<KVEntry<u64>>,
+    index: InMemoryDb<KeyStatus<u64>>,
     file_size_threshold: u64,
 }
 
 impl SegmentFile for File {
-    fn get_entry(&self, key: &str) -> Result<Option<KVEntry<String>>, Error> {
+    fn get_status(&self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
         match self.index.get(key) {
             Some(Present(offset)) => self
                 .kvfile
@@ -27,11 +27,11 @@ impl SegmentFile for File {
     fn ready_to_be_archived(&self) -> Result<bool, Error> {
         Ok(self.kvfile.size()? > self.file_size_threshold)
     }
-    fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
-        self.kvfile.append_line(key, &entry).and_then(|offset| {
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+        self.kvfile.append_line(key, &status).and_then(|offset| {
             Ok(self.index.set(
                 key,
-                &match entry {
+                &match status {
                     Present(_) => Present(offset),
                     Deleted => Deleted,
                 },
@@ -41,7 +41,7 @@ impl SegmentFile for File {
     fn absorb(&mut self, other: &Self) -> Result<(), Error> {
         for key in other.index.keys() {
             if self.index.get(key).is_none() {
-                self.add_entry(key.as_str(), &other.get_entry(key)?.unwrap())?;
+                self.set_status(key.as_str(), &other.get_status(key)?.unwrap())?;
             }
         }
         Ok(())
@@ -74,7 +74,7 @@ impl SegmentFileFactory<File> for Factory {
         let mut index = InMemoryDb::new();
         for line_result in kvfile.iter()? {
             let line = line_result?;
-            match line.entry {
+            match line.status {
                 Present(_) => index.set(&line.key, &Present(line.offset)),
                 Deleted => index.set(&line.key, &Deleted),
             }

@@ -28,7 +28,11 @@ impl Iterator for KVFileIterator {
                 *self = Self::Stopped;
                 None
             }
-            Ok(Some((key, entry))) => Some(Ok(KVLine { key, entry, offset })),
+            Ok(Some((key, status))) => Some(Ok(KVLine {
+                key,
+                status,
+                offset,
+            })),
             Err(e) => {
                 *self = Self::Stopped;
                 Some(Err(e))

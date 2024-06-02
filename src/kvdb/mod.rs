@@ -7,25 +7,25 @@ pub trait KVDb {
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error>;
     fn delete(&mut self, key: &str) -> Result<(), Error>;
     fn get(&self, key: &str) -> Result<Option<String>, Error>;
-    fn add_entry(&mut self, key: &str, entry: &KVEntry<String>) -> Result<(), Error> {
-        match entry {
-            KVEntry::Deleted => self.delete(key),
-            KVEntry::Present(value) => self.set(key, &value),
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+        match status {
+            KeyStatus::Deleted => self.delete(key),
+            KeyStatus::Present(value) => self.set(key, &value),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum KVEntry<T: Clone> {
+pub enum KeyStatus<Value: Clone> {
     Deleted,
-    Present(T),
+    Present(Value),
 }
 
-impl<T: Clone> Into<Option<T>> for KVEntry<T> {
+impl<T: Clone> Into<Option<T>> for KeyStatus<T> {
     fn into(self) -> Option<T> {
         match self {
-            KVEntry::Deleted => None,
-            KVEntry::Present(value) => Some(value),
+            KeyStatus::Deleted => None,
+            KeyStatus::Present(value) => Some(value),
         }
     }
 }
