@@ -1,7 +1,5 @@
 use crate::error::Error;
 
-pub mod test;
-
 pub trait KVDb {
     fn description(&self) -> String;
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error>;

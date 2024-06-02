@@ -6,7 +6,7 @@ use log_db::LogDb;
 use log_with_index_db::LogWithIndexDb;
 use segmented_logs_with_indices_db::SegmentedLogsWithIndicesDb;
 use sstable::SSTable;
-use test::{latency_test::LatencyTest, Test};
+use test::{correctness_test::CorrectnessTest, latency_test::LatencyTest, Test};
 
 mod error;
 mod in_memory_db;
@@ -23,6 +23,7 @@ mod utils;
 const NUM_KEYS: u32 = 10000;
 const NUM_OPERATIONS: u32 = 10000;
 const READ_WRITE_RATIO: f32 = 0.5;
+const SET_DELETE_RATIO: f32 = 1.0;
 
 fn main() {
     let mut dbs: VecDeque<Box<dyn KVDb>> = VecDeque::new();
@@ -67,12 +68,21 @@ fn main() {
         }
     }
 
-    let latency_test_suite = LatencyTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+    let correctness_test_suite =
+        CorrectnessTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO, SET_DELETE_RATIO);
     print!("\n\n");
     while !dbs.is_empty() {
         let mut db = dbs.pop_front().unwrap();
-        println!("-------Running test suite for {}-------", db.description());
-        latency_test_suite.run(&mut db);
+        correctness_test_suite.run(&mut db);
         print!("\n\n");
     }
+
+    // let latency_test_suite =
+    //     LatencyTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO, SET_DELETE_RATIO);
+    // print!("\n\n");
+    // while !dbs.is_empty() {
+    //     let mut db = dbs.pop_front().unwrap();
+    //     latency_test_suite.run(&mut db);
+    //     print!("\n\n");
+    // }
 }
