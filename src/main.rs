@@ -1,11 +1,12 @@
 use std::collections::VecDeque;
 
 use in_memory_db::InMemoryDb;
-use kvdb::{test::Test, KVDb};
+use kvdb::KVDb;
 use log_db::LogDb;
 use log_with_index_db::LogWithIndexDb;
 use segmented_logs_with_indices_db::SegmentedLogsWithIndicesDb;
 use sstable::SSTable;
+use test::{latency_test::LatencyTest, Test};
 
 mod error;
 mod in_memory_db;
@@ -16,6 +17,7 @@ mod log_with_index_db;
 mod segmented_files_db;
 mod segmented_logs_with_indices_db;
 mod sstable;
+mod test;
 mod utils;
 
 const NUM_KEYS: u32 = 10000;
@@ -65,11 +67,11 @@ fn main() {
         }
     }
 
+    let latency_test_suite = LatencyTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
     while !dbs.is_empty() {
-        let db = dbs.pop_front().unwrap();
+        let mut db = dbs.pop_front().unwrap();
         println!("-------Running test suite for {}-------", db.description());
-        let mut test = Test::new(db);
-        test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+        latency_test_suite.run(&mut db);
         print!("\n\n");
     }
 }
