@@ -7,7 +7,7 @@ pub struct LogDb {
 }
 
 impl KVDb for LogDb {
-    fn name(&self) -> String {
+    fn description(&self) -> String {
         "Log DB".to_string()
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {

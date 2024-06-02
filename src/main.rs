@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use in_memory_db::InMemoryDb;
 use kvdb::{test::Test, KVDb};
 use log_db::LogDb;
@@ -16,29 +18,21 @@ mod segmented_logs_with_indices_db;
 mod sstable;
 mod utils;
 
-const NUM_KEYS: u32 = 100;
+const NUM_KEYS: u32 = 10000;
 const NUM_OPERATIONS: u32 = 10000;
 const READ_WRITE_RATIO: f32 = 0.5;
 
 fn main() {
-    let mut dbs: Vec<Box<dyn KVDb>> = vec![
-        Box::new(LogWithIndexDb::new("db_files/log_with_index_db/", "log.txt").unwrap()),
-        Box::new(LogDb::new("db_files/log_db/", "log.txt")),
-        Box::new(InMemoryDb::new()),
-    ];
+    let mut dbs: VecDeque<Box<dyn KVDb>> = VecDeque::new();
+    dbs.push_back(Box::new(InMemoryDb::new()));
+    dbs.push_back(Box::new(LogDb::new("db_files/log_db/", "log.txt")));
+    dbs.push_back(Box::new(
+        LogWithIndexDb::new("db_files/log_with_index_db/", "log.txt").unwrap(),
+    ));
 
-    while !dbs.is_empty() {
-        let db = dbs.pop().unwrap();
-        println!("-------Running test suite for {}-------", db.name());
-        let mut test = Test::new(db);
-        test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
-        print!("\n\n");
-    }
-
-    for merge_threshold in 2..5 {
-        for size_threshold in 1..5 {
-            println!("Testing Segmented Logs (with indices) DB with size_threshold: {} and merge_threshold: {}", 500*size_threshold, merge_threshold);
-            let mut segmented_logs_with_indices_db_test = Test::new(Box::new(
+    for merge_threshold in 2..=5 {
+        for size_threshold in 1..=5 {
+            dbs.push_back(Box::new(
                 SegmentedLogsWithIndicesDb::new(
                     &format!(
                         "db_files/segmented_logs_with_indices_db_{}_{}/",
@@ -49,16 +43,33 @@ fn main() {
                 )
                 .unwrap(),
             ));
-            segmented_logs_with_indices_db_test.latency_check(
-                NUM_KEYS,
-                NUM_OPERATIONS,
-                READ_WRITE_RATIO,
-            );
         }
     }
 
-    // let mut sstable_test = Test::new(Box::new(
-    //     SSTable::new("db_files/sstable/", 10, 50, 3).unwrap(),
-    // ));
-    // sstable_test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+    for merging_threshold in 2..5 {
+        for sparsity in 1..3 {
+            for memtable_size_threshold in 1..=2 {
+                dbs.push_back(Box::new(
+                    SSTable::new(
+                        &format!(
+                            "db_files/sstable_{}_{}_{}/",
+                            merging_threshold, sparsity, memtable_size_threshold
+                        ),
+                        merging_threshold,
+                        100 * sparsity,
+                        2000 * memtable_size_threshold,
+                    )
+                    .unwrap(),
+                ));
+            }
+        }
+    }
+
+    while !dbs.is_empty() {
+        let db = dbs.pop_front().unwrap();
+        println!("-------Running test suite for {}-------", db.description());
+        let mut test = Test::new(db);
+        test.latency_check(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+        print!("\n\n");
+    }
 }

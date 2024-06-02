@@ -9,7 +9,7 @@ pub struct LogWithIndexDb {
 }
 
 impl KVDb for LogWithIndexDb {
-    fn name(&self) -> String {
+    fn description(&self) -> String {
         "Log with index DB".to_string()
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {

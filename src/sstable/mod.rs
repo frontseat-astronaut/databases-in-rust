@@ -27,6 +27,7 @@ mod segment_file;
 type Memtable = BTreeMap<String, KeyStatus<String>>;
 
 pub struct SSTable {
+    description: String,
     memtable_size_threshold: usize,
     memtable: Memtable,
     memtable_backup: KVFile,
@@ -37,8 +38,8 @@ pub struct SSTable {
 }
 
 impl KVDb for SSTable {
-    fn name(&self) -> String {
-        "SS Table".to_string()
+    fn description(&self) -> String {
+        self.description.clone()
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.flush_memtable_if_big().and_then(|_| {
@@ -84,11 +85,15 @@ impl SSTable {
         sparsity: u64,
         memtable_size_threshold: usize,
     ) -> Result<Self, Error> {
+        let description = format!("SS Table with merging threshold of {} files, sparsity of {} bytes and memtable size threshold of {} keys",
+            merging_threshold, sparsity, memtable_size_threshold
+        );
         let (memtable, memtable_backup) =
             Self::recover_memtable_from_backup(dir_path, MEMTABLE_BACKUP_FILE_NAME)?;
         let (tmp_memtable, tmp_memtable_backup) =
             Self::recover_memtable_from_backup(dir_path, TMP_MEMTABLE_BACKUP_FILE_NAME)?;
         Ok(SSTable {
+            description,
             memtable_size_threshold,
             memtable,
             memtable_backup,

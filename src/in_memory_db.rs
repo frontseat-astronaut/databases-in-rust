@@ -6,7 +6,7 @@ pub struct InMemoryDb<T: Clone> {
 }
 
 impl KVDb for InMemoryDb<String> {
-    fn name(&self) -> String {
+    fn description(&self) -> String {
         "In-Memory DB".to_string()
     }
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
