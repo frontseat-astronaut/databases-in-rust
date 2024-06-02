@@ -63,19 +63,19 @@ fn main() {
         }
     }
 
-    let correctness_test_suite = CorrectnessTest::new(1000, 1000, 0.5, 0.8);
-    print!("\n\n");
-    while !dbs.is_empty() {
-        let mut db = dbs.pop_front().unwrap();
-        correctness_test_suite.run(&mut db);
-        print!("\n\n");
-    }
-
-    // let latency_test_suite = LatencyTest::new(10000, 10000, 0.5, 0.8);
+    // let correctness_test_suite = CorrectnessTest::new(1000, 1000, 0.5, 0.8);
     // print!("\n\n");
     // while !dbs.is_empty() {
     //     let mut db = dbs.pop_front().unwrap();
-    //     latency_test_suite.run(&mut db);
+    //     correctness_test_suite.run(&mut db);
     //     print!("\n\n");
     // }
+
+    let latency_test_suite = LatencyTest::new(10000, 10000, 0.5, 0.8);
+    print!("\n\n");
+    while !dbs.is_empty() {
+        let mut db = dbs.pop_front().unwrap();
+        latency_test_suite.run(&mut db);
+        print!("\n\n");
+    }
 }
