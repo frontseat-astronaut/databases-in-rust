@@ -68,6 +68,7 @@ fn main() {
     }
 
     let latency_test_suite = LatencyTest::new(NUM_KEYS, NUM_OPERATIONS, READ_WRITE_RATIO);
+    print!("\n\n");
     while !dbs.is_empty() {
         let mut db = dbs.pop_front().unwrap();
         println!("-------Running test suite for {}-------", db.description());
