@@ -21,4 +21,4 @@ cargo run
 - [The Rust Programming Language](https://doc.rust-lang.org/book/title-page.html) by Steve Klabnik and Carol Nichols
 - [Error Handling in Rust](https://blog.burntsushi.net/rust-error-handling/) by Andrew Gallant
 
-Special thanks to @iGamer0020 for helping me with build the test suite!
+Special thanks to @iGamer0020 for helping me build the test suite!
