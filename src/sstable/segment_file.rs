@@ -52,6 +52,8 @@ impl SegmentFile for File {
     }
     fn absorb(&mut self, other: &Self) -> Result<(), Error> {
         let mut new_file = KVFile::new(&self.dir_path, TMP_FILE_NAME);
+        let mut last_indexed_offset = 0;
+        let mut new_index = vec![];
 
         let mut this_iter = self.kvfile.iter()?;
         let mut this_buf = this_iter.try_next()?;
@@ -94,7 +96,11 @@ impl SegmentFile for File {
                         }) => current_key > prev_key,
                     };
                     if should_write {
-                        new_file.append_line(&prev_key, &prev_status)?;
+                        let offset = new_file.append_line(&prev_key, &prev_status)?;
+                        if new_index.is_empty() || offset - last_indexed_offset > self.sparsity {
+                            new_index.push((prev_key.to_owned(), offset));
+                            last_indexed_offset = offset;
+                        }
                     }
                 }
             };
@@ -104,6 +110,7 @@ impl SegmentFile for File {
         let file_name = old_file.file_name.clone();
         old_file.delete()?;
         self.kvfile.rename(&file_name)?;
+        self.sparse_index = new_index;
 
         Ok(())
     }

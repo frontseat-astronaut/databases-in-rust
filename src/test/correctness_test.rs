@@ -20,28 +20,25 @@ impl Test for CorrectnessTest {
                     match db.get(key) {
                         Ok(got) => {
                             if want != got.as_ref() {
-                                println!(
+                                panic!(
                                     "Test failed: expected {:?} value for key {}, got {:?}",
                                     want, key, got
                                 );
-                                return;
                             }
                         }
-                        Err(e) => println!("Test failed: unexpected error in read: {}", e),
+                        Err(e) => panic!("Test failed: unexpected error in read: {}", e),
                     }
                 }
                 Operation::Write(ref key, ref value) => {
                     sot.insert(key, value.clone());
                     if let Err(e) = db.set(key, value) {
-                        println!("Test failed: unexpected error in write: {}", e);
-                        return;
+                        panic!("Test failed: unexpected error in write: {}", e);
                     }
                 }
                 Operation::Delete(ref key) => {
                     sot.remove(key);
                     if let Err(e) = db.delete(key) {
-                        println!("Test failed: unexpected error in delete: {}", e);
-                        return;
+                        panic!("Test failed: unexpected error in delete: {}", e);
                     }
                 }
             }
