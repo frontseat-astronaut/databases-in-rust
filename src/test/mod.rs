@@ -9,7 +9,7 @@ pub trait Test {
 }
 
 enum Operation {
-    Write(String, String),
+    Set(String, String),
     Delete(String),
     Read(String),
 }
