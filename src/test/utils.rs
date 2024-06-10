@@ -1,4 +1,9 @@
-use std::{collections::HashSet, time::SystemTime};
+use std::{
+    collections::HashSet,
+    fs::{create_dir_all, OpenOptions},
+    io::{BufRead, BufReader, Read, Write},
+    time::SystemTime,
+};
 
 use rand::Rng;
 
@@ -8,12 +13,15 @@ fn chance(num: u8) -> bool {
     rand::thread_rng().gen_range(0..10) < num
 }
 
+const DIR_PATH: &str = "./test_cases/";
+
 pub fn generate_random_operations(
     num_keys: u32,
     num_operations: u32,
     read_write_ratio: f32,
     set_delete_ratio: f32,
     hit_reads_ratio: f32,
+    save: bool,
 ) -> Vec<Operation> {
     let setup_start_time = SystemTime::now();
     let mut key_vector = vec![];
@@ -63,7 +71,7 @@ pub fn generate_random_operations(
         }
 
         let mut key = key;
-        if (chance(2) && num_hit_reads > 0) || num_hit_reads == num_reads {
+        if num_hit_reads > 0 {
             key = known_key;
             num_hit_reads -= 1;
         }
@@ -76,5 +84,51 @@ pub fn generate_random_operations(
         "Finished generating random operations in {:?}",
         setup_start_time.elapsed().unwrap()
     );
+
+    if save {
+        create_dir_all(DIR_PATH).unwrap();
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(format!(
+                "{DIR_PATH}{num_keys}_{num_operations}_{read_write_ratio}_{set_delete_ratio}_{hit_reads_ratio}"
+            )).unwrap();
+        for op in operations.iter() {
+            match op {
+                Operation::Set(key, value) => writeln!(&mut file, "S {key} {value}").unwrap(),
+                Operation::Delete(key) => writeln!(&mut file, "D {key}").unwrap(),
+                Operation::Read(key) => writeln!(&mut file, "R {key}").unwrap(),
+            }
+        }
+    }
+
+    operations
+}
+
+pub fn read_test_cases_from_file(file_path: &str) -> Vec<Operation> {
+    let mut operations = vec![];
+    let file = OpenOptions::new().read(true).open(file_path).unwrap();
+    let mut reader = BufReader::new(file);
+    loop {
+        let mut buf = String::new();
+        let bytes_read = reader.read_line(&mut buf).unwrap();
+        if bytes_read == 0 {
+            break;
+        }
+        // remove \n
+        let _ = buf.split_off(buf.len() - 1);
+        let (op, rest) = buf.split_once(" ").unwrap();
+        match op {
+            "S" => {
+                let (key, value) = rest.split_once(" ").unwrap();
+                operations.push(Operation::Set(key.to_string(), value.to_string()))
+            }
+            "D" => operations.push(Operation::Delete(rest.to_string())),
+            "R" => operations.push(Operation::Read(rest.to_string())),
+            op_str => panic!("invalid operation: {op_str}"),
+        }
+    }
     operations
 }

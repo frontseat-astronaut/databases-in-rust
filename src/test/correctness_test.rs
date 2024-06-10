@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use super::{utils::generate_random_operations, Operation, Test};
+use super::{
+    utils::{generate_random_operations, read_test_cases_from_file},
+    Operation, Test,
+};
 
 pub struct CorrectnessTest {
     operations: Vec<Operation>,
@@ -58,6 +61,7 @@ impl CorrectnessTest {
         read_write_ratio: f32,
         set_delete_ratio: f32,
         hit_reads_ratio: f32,
+        save_test_case: bool,
     ) -> CorrectnessTest {
         let operations = generate_random_operations(
             num_keys,
@@ -65,7 +69,12 @@ impl CorrectnessTest {
             read_write_ratio,
             set_delete_ratio,
             hit_reads_ratio,
+            save_test_case,
         );
+        CorrectnessTest { operations }
+    }
+    pub fn from_file(file_path: &str) -> CorrectnessTest {
+        let operations = read_test_cases_from_file(file_path);
         CorrectnessTest { operations }
     }
 }

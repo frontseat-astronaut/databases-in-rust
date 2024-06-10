@@ -2,7 +2,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::test::utils::generate_random_operations;
 
-use super::{Operation, Test};
+use super::{utils::read_test_cases_from_file, Operation, Test};
 
 pub struct LatencyTest {
     operations: Vec<Operation>,
@@ -58,6 +58,7 @@ impl LatencyTest {
         read_write_ratio: f32,
         set_delete_ratio: f32,
         hit_reads_ratio: f32,
+        save_test_case: bool,
     ) -> LatencyTest {
         let operations = generate_random_operations(
             num_keys,
@@ -65,7 +66,12 @@ impl LatencyTest {
             read_write_ratio,
             set_delete_ratio,
             hit_reads_ratio,
+            save_test_case,
         );
+        LatencyTest { operations }
+    }
+    pub fn from_file(file_path: &str) -> LatencyTest {
+        let operations = read_test_cases_from_file(file_path);
         LatencyTest { operations }
     }
 }

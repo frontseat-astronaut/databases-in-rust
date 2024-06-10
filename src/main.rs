@@ -94,21 +94,30 @@ fn run_test_suite<T: Test>(test_suite: T, mut dbs: VecDeque<Box<dyn KVDb>>) {
 
 fn main() {
     /* CORRECTNESS TESTS */
-    let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9);
+    let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9, false);
     let dbs = prepare_dbs(false, false);
     run_test_suite(correctness_test_suite, dbs);
 
-    /* LATENCY TESTS */
-    let latency_test_suite = LatencyTest::new(50000, 20000, 0.5, 0.7, 0.8);
-    let dbs = prepare_dbs(false, true);
-    run_test_suite(latency_test_suite, dbs);
+    // /* LATENCY TESTS */
+    // let latency_test_suite = LatencyTest::new(50000, 20000, 0.5, 0.7, 0.8, false);
+    // let dbs = prepare_dbs(false, true);
+    // run_test_suite(latency_test_suite, dbs);
 
-    /* TESTS WITH LESSER NUMBER OF KEYS (because log db is so slow) */
-    let correctness_test_suite = CorrectnessTest::new(2000, 10000, 0.5, 0.7, 0.9);
-    let dbs = prepare_dbs(true, false);
-    run_test_suite(correctness_test_suite, dbs);
+    // /* TESTS WITH LESSER NUMBER OF KEYS (because log db is so slow) */
+    // let correctness_test_suite = CorrectnessTest::new(2000, 10000, 0.5, 0.7, 0.9, false);
+    // let dbs = prepare_dbs(true, false);
+    // run_test_suite(correctness_test_suite, dbs);
 
-    let latency_test_suite = LatencyTest::new(2000, 10000, 0.5, 0.7, 0.8);
-    let dbs = prepare_dbs(true, false);
-    run_test_suite(latency_test_suite, dbs);
+    // let latency_test_suite = LatencyTest::new(2000, 10000, 0.5, 0.7, 0.8, false);
+    // let dbs = prepare_dbs(true, false);
+    // run_test_suite(latency_test_suite, dbs);
+
+    /* RUNNING ON BENCHMARK TESTS */
+    let small_benchmark = LatencyTest::from_file("test_cases/2000_10000_0.5_0.7_0.9");
+    let dbs = prepare_dbs(true, true);
+    run_test_suite(small_benchmark, dbs);
+
+    let big_benchmark = LatencyTest::from_file("test_cases/20000_100000_0.5_0.8_0.9");
+    let dbs = prepare_dbs(false, false);
+    run_test_suite(big_benchmark, dbs);
 }
