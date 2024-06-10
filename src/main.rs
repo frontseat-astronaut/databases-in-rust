@@ -27,7 +27,7 @@ fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box
     dbs.push_back(Box::new(InMemoryDb::new()));
     if include_log_db {
         // too slow
-        dbs.push_back(Box::new(LogDb::new("db_files/log_db/", "log.txt")));
+        dbs.push_back(Box::new(LogDb::new("db_files/log_db/", "log.txt").unwrap()));
     }
     dbs.push_back(Box::new(
         LogWithIndexDb::new("db_files/log_with_index_db/", "log.txt").unwrap(),
@@ -86,7 +86,7 @@ fn run_test_suite<T: Test>(test_suite: T, mut dbs: VecDeque<Box<dyn KVDb>>) {
     print!("\n\n");
     while !dbs.is_empty() {
         let mut db = dbs.pop_front().unwrap();
-        let _ = fs::remove_dir_all("./db_files/");
+        // let _ = fs::remove_dir_all("./db_files/");
         test_suite.run(&mut db);
         print!("\n\n");
     }

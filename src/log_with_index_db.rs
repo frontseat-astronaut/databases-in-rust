@@ -22,9 +22,9 @@ impl KVDb for LogWithIndexDb {
             .append_line(key, &KeyStatus::Deleted)
             .and_then(|_| Ok(self.index.delete(key)))
     }
-    fn get(&self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
         match self.index.get(key) {
-            Some(offset) => self.file.get_at_offset(offset),
+            Some(offset) => self.file.read_at_offset(offset),
             None => Ok(None),
         }
     }
@@ -33,7 +33,7 @@ impl KVDb for LogWithIndexDb {
 impl LogWithIndexDb {
     pub fn new(dir_path: &str, file_name: &str) -> Result<LogWithIndexDb, Error> {
         let mut index = InMemoryDb::new();
-        let file = KVFile::new(dir_path, file_name);
+        let mut file = KVFile::new(dir_path, file_name)?;
         for line_result in file.iter()? {
             let KVLine {
                 key,

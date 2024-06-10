@@ -15,8 +15,8 @@ impl KVDb for InMemoryDb<String> {
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         Ok(Self::delete(self, key))
     }
-    fn get(&self, key: &str) -> Result<Option<String>, Error> {
-        Ok(self.get(key))
+    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+        Ok(Self::get(&self, key))
     }
 }
 

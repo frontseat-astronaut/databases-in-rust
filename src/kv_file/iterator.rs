@@ -8,12 +8,12 @@ use crate::error::Error;
 use super::{utils::read_line, KVLine};
 
 #[derive(Debug)]
-pub enum KVFileIterator {
+pub enum KVFileIterator<'a> {
     Stopped,
-    Running(BufReader<File>),
+    Running(BufReader<&'a mut File>),
 }
 
-impl Iterator for KVFileIterator {
+impl<'a> Iterator for KVFileIterator<'a> {
     type Item = Result<KVLine, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -41,17 +41,10 @@ impl Iterator for KVFileIterator {
     }
 }
 
-impl KVFileIterator {
-    pub fn new(maybe_file: Option<File>, offset: u64) -> Result<KVFileIterator, Error> {
-        match maybe_file {
-            None => Ok(Self::Stopped),
-            Some(mut file) => {
-                if offset > 0 {
-                    file.seek(SeekFrom::Start(offset))?;
-                }
-                Ok(Self::Running(BufReader::new(file)))
-            }
-        }
+impl<'a> KVFileIterator<'a> {
+    pub fn new(file: &'a mut File, offset: u64) -> Result<KVFileIterator<'a>, Error> {
+        file.seek(SeekFrom::Start(offset))?;
+        Ok(Self::Running(BufReader::new(file)))
     }
     pub fn try_next(&mut self) -> Result<Option<KVLine>, Error> {
         match self.next() {

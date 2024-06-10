@@ -4,7 +4,7 @@ pub trait KVDb {
     fn description(&self) -> String;
     fn set(&mut self, key: &str, value: &str) -> Result<(), Error>;
     fn delete(&mut self, key: &str) -> Result<(), Error>;
-    fn get(&self, key: &str) -> Result<Option<String>, Error>;
+    fn get(&mut self, key: &str) -> Result<Option<String>, Error>;
     fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
         match status {
             KeyStatus::Deleted => self.delete(key),

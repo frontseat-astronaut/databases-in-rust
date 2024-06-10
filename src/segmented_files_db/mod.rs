@@ -5,6 +5,8 @@ use std::{
     thread::{spawn, JoinHandle},
 };
 
+use segment_file::{SegmentReader, SegmentReaderFactory};
+
 use crate::{
     check_key_status,
     error::Error,
@@ -25,81 +27,71 @@ pub enum SegmentCreationPolicy {
     Automatic,
 }
 
-pub struct SegmentedFilesDb<T, U>
+pub struct SegmentedFilesDb<F, U, V>
 where
-    T: SegmentFile + Sync + Send + 'static,
-    U: SegmentFileFactory<T> + Sync + Send + 'static,
+    F: SegmentFile + Sync + Send + 'static,
+    U: SegmentFileFactory<F> + Sync + Send + 'static,
+    V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
     merging_threshold: u64,
     segment_creation_policy: SegmentCreationPolicy,
-    locked_past_segments: Arc<RwLock<Vec<Segment<T>>>>,
-    locked_current_segment: Arc<RwLock<Segment<T>>>,
+    locked_past_segments: Arc<RwLock<Vec<Segment<F>>>>,
+    current_segment: Segment<F>,
     file_factory: Arc<U>,
+    reader_factory: Arc<V>,
     join_handle: Option<JoinHandle<Result<(), Error>>>,
 }
 
-impl<T, U> SegmentedFilesDb<T, U>
+impl<F, U, V> SegmentedFilesDb<F, U, V>
 where
-    T: SegmentFile + Sync + Send + 'static,
-    U: SegmentFileFactory<T> + Sync + Send + 'static,
+    F: SegmentFile + Sync + Send + 'static,
+    U: SegmentFileFactory<F> + Sync + Send + 'static,
+    V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
-        self.locked_current_segment
-            .write()
-            .map_err(Error::from)
-            .and_then(|mut current_segment| {
-                current_segment
-                    .file
-                    .set_status(key, &Present(value.to_owned()))
-            })
+        self.current_segment
+            .file
+            .set_status(key, &Present(value.to_owned()))
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
-        self.locked_current_segment
-            .write()
-            .map_err(Error::from)
-            .and_then(|mut current_segment| current_segment.file.set_status(key, &Deleted))
+        self.current_segment.file.set_status(key, &Deleted)
     }
-    pub fn get(&self, key: &str) -> Result<Option<String>, Error> {
+    pub fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
         {
-            let current_segment = self.locked_current_segment.read()?;
-            check_key_status!(current_segment.file.get_status(key)?);
+            check_key_status!(self.current_segment.file.get_status(key)?);
         }
 
         {
             let past_segments = self.locked_past_segments.read()?;
             for segment in past_segments.iter().rev() {
-                check_key_status!(segment.file.get_status(key)?);
+                let mut segment_reader = self.reader_factory.new(&segment.file)?;
+                check_key_status!(segment_reader.get_status(key)?);
             }
         }
 
         Ok(None)
     }
     pub fn create_fresh_segment(&mut self) -> Result<(), Error> {
-        if self
-            .locked_current_segment
-            .read()?
-            .file
-            .ready_to_be_archived()?
-        {
+        let should_do = self.current_segment.file.ready_to_be_archived()?;
+        if should_do {
             let past_segments_len;
             {
                 let mut past_segments = self.locked_past_segments.write()?;
-                let mut current_segment = self.locked_current_segment.write()?;
 
                 let latest_past_segment_id: usize = past_segments
                     .last()
                     .map(|segment| segment.id + 1)
                     .get_or_insert(0)
                     .clone();
-                current_segment
+                self.current_segment
                     .change_id(latest_past_segment_id)
                     .map_err(|e| Error::wrap("error in changing id of current segment", e))?;
 
                 let new_segment_id = latest_past_segment_id + 1;
                 let new_segment = Segment::new(new_segment_id, &(*self.file_factory))?;
-                let latest_past_segment = replace(&mut (*current_segment), new_segment);
+                let latest_past_segment = replace(&mut self.current_segment, new_segment);
 
                 past_segments.push(latest_past_segment);
                 past_segments_len = past_segments.len();
@@ -113,10 +105,11 @@ where
     }
 }
 
-impl<T, U> Drop for SegmentedFilesDb<T, U>
+impl<F, U, V> Drop for SegmentedFilesDb<F, U, V>
 where
-    T: SegmentFile + Sync + Send + 'static,
-    U: SegmentFileFactory<T> + Sync + Send + 'static,
+    F: SegmentFile + Sync + Send + 'static,
+    U: SegmentFileFactory<F> + Sync + Send + 'static,
+    V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
     fn drop(&mut self) {
         if let Some(handle) = self.join_handle.take() {
@@ -125,16 +118,18 @@ where
     }
 }
 
-impl<T, U> SegmentedFilesDb<T, U>
+impl<F, U, V> SegmentedFilesDb<F, U, V>
 where
-    T: SegmentFile + Sync + Send + 'static,
-    U: SegmentFileFactory<T> + Sync + Send + 'static,
+    F: SegmentFile + Sync + Send + 'static,
+    U: SegmentFileFactory<F> + Sync + Send + 'static,
+    V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
     pub fn new(
         dir_path: &str,
         merging_threshold: u64,
         segment_creation_policy: SegmentCreationPolicy,
         file_factory: U,
+        reader_factory: V,
     ) -> Result<Self, Error> {
         create_dir_all(dir_path)?;
 
@@ -156,7 +151,8 @@ where
             merging_threshold,
             segment_creation_policy,
             locked_past_segments: Arc::new(RwLock::new(segments)),
-            locked_current_segment: Arc::new(RwLock::new(current_segment)),
+            current_segment: current_segment,
+            reader_factory: Arc::new(reader_factory),
             file_factory: Arc::new(file_factory),
             join_handle: None,
         })
@@ -177,11 +173,13 @@ where
 
         let locked_past_segments = Arc::clone(&self.locked_past_segments);
         let file_factory = Arc::clone(&self.file_factory);
+        let reader_factory = Arc::clone(&self.reader_factory);
         self.join_handle = Some(spawn(move || -> Result<(), Error> {
             let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
             for segment in locked_past_segments.read()?.iter().rev() {
-                merged_segment_file.absorb(&segment.file)?;
+                let mut segment_reader = reader_factory.new(&segment.file)?;
+                merged_segment_file.absorb(&mut segment_reader)?;
             }
 
             {

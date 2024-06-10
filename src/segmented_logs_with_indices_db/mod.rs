@@ -1,3 +1,5 @@
+use segment_file::ReaderFactory;
+
 use crate::{
     error::Error,
     kvdb::KVDb,
@@ -10,7 +12,7 @@ mod segment_file;
 
 pub struct SegmentedLogsWithIndicesDb {
     description: String,
-    segmented_files_db: SegmentedFilesDb<File, Factory>,
+    segmented_files_db: SegmentedFilesDb<File, Factory, ReaderFactory>,
 }
 
 impl KVDb for SegmentedLogsWithIndicesDb {
@@ -23,7 +25,7 @@ impl KVDb for SegmentedLogsWithIndicesDb {
     fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.segmented_files_db.delete(key)
     }
-    fn get(&self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
         self.segmented_files_db.get(key)
     }
 }
@@ -37,7 +39,7 @@ impl SegmentedLogsWithIndicesDb {
         let description = format!("Segmented logs with indices DB, with file size threshold of {} bytes and merging threshold of {} files", file_size_threshold, merging_threshold);
         Ok(SegmentedLogsWithIndicesDb {
             description,
-            segmented_files_db: SegmentedFilesDb::<File, Factory>::new(
+            segmented_files_db: SegmentedFilesDb::<File, Factory, ReaderFactory>::new(
                 dir_path,
                 merging_threshold,
                 SegmentCreationPolicy::Automatic,
@@ -45,6 +47,7 @@ impl SegmentedLogsWithIndicesDb {
                     dir_path: dir_path.to_owned(),
                     file_size_threshold,
                 },
+                ReaderFactory {},
             )?,
         })
     }
