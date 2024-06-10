@@ -5,7 +5,7 @@ use std::{
     thread::{spawn, JoinHandle},
 };
 
-use segment_file::{SegmentReader, SegmentReaderFactory};
+use segment_file::SegmentReaderFactory;
 
 use crate::{
     check_key_status,
@@ -51,30 +51,37 @@ where
     pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
         self.current_segment
-            .file
+            .locked_file
+            .write()?
             .set_status(key, &Present(value.to_owned()))
     }
     pub fn delete(&mut self, key: &str) -> Result<(), Error> {
         self.maybe_create_fresh_segment()?;
-        self.current_segment.file.set_status(key, &Deleted)
+        self.current_segment
+            .locked_file
+            .write()?
+            .set_status(key, &Deleted)
     }
     pub fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
         {
-            check_key_status!(self.current_segment.file.get_status(key)?);
+            check_key_status!(self.current_segment.locked_file.write()?.get_status(key)?);
         }
 
         {
             let past_segments = self.locked_past_segments.read()?;
             for segment in past_segments.iter().rev() {
-                let mut segment_reader = self.reader_factory.new(&segment.file)?;
-                check_key_status!(segment_reader.get_status(key)?);
+                check_key_status!(segment.locked_file.write()?.get_status(key)?);
             }
         }
 
         Ok(None)
     }
     pub fn create_fresh_segment(&mut self) -> Result<(), Error> {
-        let should_do = self.current_segment.file.ready_to_be_archived()?;
+        let should_do = self
+            .current_segment
+            .locked_file
+            .read()?
+            .ready_to_be_archived()?;
         if should_do {
             let past_segments_len;
             {
@@ -178,7 +185,8 @@ where
             let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
             for segment in locked_past_segments.read()?.iter().rev() {
-                let mut segment_reader = reader_factory.new(&segment.file)?;
+                let file = segment.locked_file.read()?;
+                let mut segment_reader = reader_factory.new(&file)?;
                 merged_segment_file.absorb(&mut segment_reader)?;
             }
 
@@ -186,7 +194,7 @@ where
                 let mut past_segments = locked_past_segments.write()?;
                 while !past_segments.is_empty() {
                     let past_segment = past_segments.pop().unwrap();
-                    past_segment.file.delete()?;
+                    past_segment.locked_file.into_inner()?.delete()?;
                 }
 
                 past_segments.push(Segment::from_file(merged_segment_file, 0)?)

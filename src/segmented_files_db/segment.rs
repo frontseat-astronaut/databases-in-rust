@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::RwLock};
 
 use crate::error::Error;
 
@@ -9,7 +9,7 @@ where
     T: SegmentFile,
 {
     pub id: usize,
-    pub file: T,
+    pub locked_file: RwLock<T>,
 }
 
 impl<T> Segment<T>
@@ -19,7 +19,7 @@ where
     pub fn new<U: SegmentFileFactory<T>>(id: usize, file_factory: &U) -> Result<Self, Error> {
         Ok(Segment {
             id,
-            file: file_factory.new(get_segment_file_name(id).as_str())?,
+            locked_file: RwLock::new(file_factory.new(get_segment_file_name(id).as_str())?),
         })
     }
     pub fn try_from_disk<U: SegmentFileFactory<T>>(
@@ -33,7 +33,7 @@ where
                         if let Ok(id) = file_stem.parse::<usize>() {
                             return Ok(Some(Segment {
                                 id,
-                                file: file_factory.from_disk(file_name)?,
+                                locked_file: RwLock::new(file_factory.from_disk(file_name)?),
                             }));
                         }
                     }
@@ -43,13 +43,18 @@ where
         Ok(None)
     }
     pub fn from_file(file: T, id: usize) -> Result<Self, Error> {
-        let mut segment = Segment { id: 0, file };
+        let mut segment = Segment {
+            id: 0,
+            locked_file: RwLock::new(file),
+        };
         segment.change_id(id)?;
         Ok(segment)
     }
     pub fn change_id(&mut self, id: usize) -> Result<(), Error> {
         self.id = id;
-        self.file.rename(get_segment_file_name(id).as_str())
+        self.locked_file
+            .write()?
+            .rename(get_segment_file_name(id).as_str())
     }
 }
 
