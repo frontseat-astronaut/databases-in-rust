@@ -113,11 +113,11 @@ fn main() {
     // run_test_suite(latency_test_suite, dbs);
 
     /* RUNNING ON BENCHMARK TESTS */
-    let small_benchmark = LatencyTest::from_file("test_cases/2000_10000_0.5_0.7_0.9");
+    let small_benchmark = LatencyTest::from_file("test_cases/2000_10000_0.5_0.7_0.9.txt");
     let dbs = prepare_dbs(true, true);
     run_test_suite(small_benchmark, dbs);
 
-    let big_benchmark = LatencyTest::from_file("test_cases/20000_100000_0.5_0.8_0.9");
+    let big_benchmark = LatencyTest::from_file("test_cases/20000_100000_0.5_0.8_0.9.txt");
     let dbs = prepare_dbs(false, false);
     run_test_suite(big_benchmark, dbs);
 }

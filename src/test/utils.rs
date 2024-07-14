@@ -93,7 +93,7 @@ pub fn generate_random_operations(
             .create(true)
             .truncate(true)
             .open(format!(
-                "{DIR_PATH}{num_keys}_{num_operations}_{read_write_ratio}_{set_delete_ratio}_{hit_reads_ratio}"
+                "{DIR_PATH}{num_keys}_{num_operations}_{read_write_ratio}_{set_delete_ratio}_{hit_reads_ratio}.txt"
             )).unwrap();
         for op in operations.iter() {
             match op {
