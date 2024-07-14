@@ -3,6 +3,8 @@ use std::fmt;
 use std::io;
 use std::sync::PoisonError;
 
+pub type DbResult<T> = Result<T, Error>;
+
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),

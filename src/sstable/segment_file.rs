@@ -8,6 +8,7 @@ use crate::{
         SegmentFile, SegmentFileFactory, SegmentReader, SegmentReaderFactory,
     },
 };
+use crate::error::DbResult;
 
 const TMP_FILE_NAME: &str = "merged_tmp_file.txt";
 
@@ -17,7 +18,7 @@ pub struct Reader<'a> {
 }
 
 impl<'a> SegmentReader<'a> for Reader<'a> {
-    fn get_status(&mut self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
+    fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>> {
         get_status(self.sparse_index, &mut self.kvfile, key)
     }
 }
@@ -32,7 +33,7 @@ pub struct File {
 
 impl SegmentFile for File {
     type Reader<'a> = Reader<'a>;
-    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {
         self.kvfile.append_line(key, status).and_then(|offset| {
             if self.sparse_index.is_empty() || offset - self.last_indexed_offset > self.sparsity {
                 self.sparse_index.push((key.to_owned(), offset));
@@ -41,10 +42,10 @@ impl SegmentFile for File {
             Ok(())
         })
     }
-    fn get_status(&mut self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
+    fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>> {
         get_status(&self.sparse_index, &mut self.kvfile, key)
     }
-    fn absorb<'a>(&mut self, other: &mut Reader<'a>) -> Result<(), Error> {
+    fn absorb<'a>(&mut self, other: &mut Reader<'a>) -> DbResult<()> {
         let mut new_file = KVFile::new(&self.dir_path, TMP_FILE_NAME)?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
@@ -108,10 +109,10 @@ impl SegmentFile for File {
 
         Ok(())
     }
-    fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
+    fn rename(&mut self, new_file_name: &str) -> DbResult<()> {
         self.kvfile.rename(new_file_name)
     }
-    fn delete(mut self) -> Result<(), Error> {
+    fn delete(mut self) -> DbResult<()> {
         self.kvfile.delete()
     }
 }
@@ -119,7 +120,7 @@ impl SegmentFile for File {
 pub struct ReaderFactory {}
 
 impl SegmentReaderFactory<File> for ReaderFactory {
-    fn new<'a>(&self, file: &'a File) -> Result<<File as SegmentFile>::Reader<'a>, Error> {
+    fn new<'a>(&self, file: &'a File) -> DbResult<<File as SegmentFile>::Reader<'a>> {
         return Ok(Reader {
             kvfile: KVFile::copy(&file.kvfile)?,
             sparse_index: &file.sparse_index,
@@ -133,7 +134,7 @@ pub struct Factory {
 }
 
 impl SegmentFileFactory<File> for Factory {
-    fn new(&self, file_name: &str) -> Result<File, Error> {
+    fn new(&self, file_name: &str) -> DbResult<File> {
         let kvfile = KVFile::new(&self.dir_path, file_name)?;
         Ok(File {
             dir_path: self.dir_path.clone(),
@@ -143,7 +144,7 @@ impl SegmentFileFactory<File> for Factory {
             last_indexed_offset: 0,
         })
     }
-    fn from_disk(&self, file_name: &str) -> Result<File, Error> {
+    fn from_disk(&self, file_name: &str) -> DbResult<File> {
         let mut kvfile = KVFile::new(&self.dir_path, file_name)?;
 
         let mut last_indexed_offset = 0;
@@ -170,7 +171,7 @@ fn get_status(
     sparse_index: &Vec<(String, u64)>,
     kvfile: &mut KVFile,
     key: &str,
-) -> Result<Option<KeyStatus<String>>, Error> {
+) -> DbResult<Option<KeyStatus<String>>> {
     let index = match sparse_index.binary_search_by(|(this_key, _)| this_key.cmp(&key.to_string()))
     {
         Ok(index) => index,

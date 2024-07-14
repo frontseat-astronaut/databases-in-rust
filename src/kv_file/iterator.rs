@@ -3,7 +3,7 @@ use std::{
     io::{BufReader, Seek, SeekFrom},
 };
 
-use crate::error::Error;
+use crate::error::DbResult;
 
 use super::{utils::read_line, KVLine};
 
@@ -14,7 +14,7 @@ pub enum KVFileIterator<'a> {
 }
 
 impl<'a> Iterator for KVFileIterator<'a> {
-    type Item = Result<KVLine, Error>;
+    type Item = DbResult<KVLine>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let Self::Running(reader) = self else {
@@ -42,11 +42,11 @@ impl<'a> Iterator for KVFileIterator<'a> {
 }
 
 impl<'a> KVFileIterator<'a> {
-    pub fn new(file: &'a mut File, offset: u64) -> Result<KVFileIterator<'a>, Error> {
+    pub fn new(file: &'a mut File, offset: u64) -> DbResult<KVFileIterator<'a>> {
         file.seek(SeekFrom::Start(offset))?;
         Ok(Self::Running(BufReader::new(file)))
     }
-    pub fn try_next(&mut self) -> Result<Option<KVLine>, Error> {
+    pub fn try_next(&mut self) -> DbResult<Option<KVLine>> {
         match self.next() {
             None => Ok(None),
             Some(Ok(inner)) => Ok(Some(inner)),

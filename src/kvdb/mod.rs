@@ -1,11 +1,11 @@
-use crate::error::Error;
+use crate::error::DbResult;
 
 pub trait KVDb {
     fn description(&self) -> String;
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error>;
-    fn delete(&mut self, key: &str) -> Result<(), Error>;
-    fn get(&mut self, key: &str) -> Result<Option<String>, Error>;
-    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+    fn set(&mut self, key: &str, value: &str) -> DbResult<()>;
+    fn delete(&mut self, key: &str) -> DbResult<()>;
+    fn get(&mut self, key: &str) -> DbResult<Option<String>>;
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {
         match status {
             KeyStatus::Deleted => self.delete(key),
             KeyStatus::Present(value) => self.set(key, &value),

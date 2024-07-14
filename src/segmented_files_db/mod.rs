@@ -13,7 +13,7 @@ use crate::{
     kvdb::KeyStatus::{Deleted, Present},
     utils::{is_thread_running, process_dir_contents},
 };
-
+use crate::error::DbResult;
 use self::segment::Segment;
 use self::segment_file::{SegmentFile, SegmentFileFactory};
 
@@ -39,7 +39,7 @@ where
     current_segment: Segment<F>,
     file_factory: Arc<U>,
     reader_factory: Arc<V>,
-    join_handle: Option<JoinHandle<Result<(), Error>>>,
+    join_handle: Option<JoinHandle<DbResult<()>>>,
 }
 
 impl<F, U, V> SegmentedFilesDb<F, U, V>
@@ -48,21 +48,21 @@ where
     U: SegmentFileFactory<F> + Sync + Send + 'static,
     V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
-    pub fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+    pub fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.maybe_create_fresh_segment()?;
         self.current_segment
             .locked_file
             .write()?
             .set_status(key, &Present(value.to_owned()))
     }
-    pub fn delete(&mut self, key: &str) -> Result<(), Error> {
+    pub fn delete(&mut self, key: &str) -> DbResult<()> {
         self.maybe_create_fresh_segment()?;
         self.current_segment
             .locked_file
             .write()?
             .set_status(key, &Deleted)
     }
-    pub fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+    pub fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         {
             check_key_status!(self.current_segment.locked_file.write()?.get_status(key)?);
         }
@@ -76,7 +76,7 @@ where
 
         Ok(None)
     }
-    pub fn create_fresh_segment(&mut self) -> Result<(), Error> {
+    pub fn create_fresh_segment(&mut self) -> DbResult<()> {
         let should_do = self
             .current_segment
             .locked_file
@@ -137,7 +137,7 @@ where
         segment_creation_policy: SegmentCreationPolicy,
         file_factory: U,
         reader_factory: V,
-    ) -> Result<Self, Error> {
+    ) -> DbResult<Self> {
         create_dir_all(dir_path)?;
 
         let mut segments = vec![];
@@ -164,7 +164,7 @@ where
             join_handle: None,
         })
     }
-    fn maybe_create_fresh_segment(&mut self) -> Result<(), Error> {
+    fn maybe_create_fresh_segment(&mut self) -> DbResult<()> {
         if is_thread_running(&self.join_handle) {
             return Ok(());
         }
@@ -181,7 +181,7 @@ where
         let locked_past_segments = Arc::clone(&self.locked_past_segments);
         let file_factory = Arc::clone(&self.file_factory);
         let reader_factory = Arc::clone(&self.reader_factory);
-        self.join_handle = Some(spawn(move || -> Result<(), Error> {
+        self.join_handle = Some(spawn(move || -> DbResult<()> {
             let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
             for segment in locked_past_segments.read()?.iter().rev() {

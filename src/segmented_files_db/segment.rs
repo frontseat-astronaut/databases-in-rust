@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::RwLock};
 
-use crate::error::Error;
+use crate::error::DbResult;
 
 use super::segment_file::{SegmentFile, SegmentFileFactory};
 
@@ -16,7 +16,7 @@ impl<T> Segment<T>
 where
     T: SegmentFile,
 {
-    pub fn new<U: SegmentFileFactory<T>>(id: usize, file_factory: &U) -> Result<Self, Error> {
+    pub fn new<U: SegmentFileFactory<T>>(id: usize, file_factory: &U) -> DbResult<Self> {
         Ok(Segment {
             id,
             locked_file: RwLock::new(file_factory.new(get_segment_file_name(id).as_str())?),
@@ -25,7 +25,7 @@ where
     pub fn try_from_disk<U: SegmentFileFactory<T>>(
         path: &PathBuf,
         file_factory: &U,
-    ) -> Result<Option<Self>, Error> {
+    ) -> DbResult<Option<Self>> {
         if let Some(file_name_os_str) = path.file_name() {
             if let Some(file_name) = file_name_os_str.to_str() {
                 if let Some(file_stem_os_str) = path.file_stem() {
@@ -42,7 +42,7 @@ where
         }
         Ok(None)
     }
-    pub fn from_file(file: T, id: usize) -> Result<Self, Error> {
+    pub fn from_file(file: T, id: usize) -> DbResult<Self> {
         let mut segment = Segment {
             id: 0,
             locked_file: RwLock::new(file),
@@ -50,7 +50,7 @@ where
         segment.change_id(id)?;
         Ok(segment)
     }
-    pub fn change_id(&mut self, id: usize) -> Result<(), Error> {
+    pub fn change_id(&mut self, id: usize) -> DbResult<()> {
         self.id = id;
         self.locked_file
             .write()?

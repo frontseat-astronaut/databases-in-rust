@@ -16,7 +16,7 @@ use crate::{
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
     utils::is_thread_running,
 };
-
+use crate::error::DbResult;
 use self::segment_file::{Factory, File, ReaderFactory};
 
 const MEMTABLE_BACKUP_FILE_NAME: &str = "memtable_backup.txt";
@@ -41,7 +41,7 @@ impl KVDb for SSTable {
     fn description(&self) -> String {
         self.description.clone()
     }
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+    fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.flush_memtable_if_big().and_then(|_| {
             let status = Present(value.to_string());
             if let Err(e) = self.memtable_backup.append_line(key, &status) {
@@ -51,7 +51,7 @@ impl KVDb for SSTable {
             Ok(())
         })
     }
-    fn delete(&mut self, key: &str) -> Result<(), Error> {
+    fn delete(&mut self, key: &str) -> DbResult<()> {
         self.flush_memtable_if_big().and_then(|_| {
             if let Err(e) = self.memtable_backup.append_line(key, &Deleted) {
                 println!("error in writing to memtable backup: {}", e);
@@ -60,7 +60,7 @@ impl KVDb for SSTable {
             Ok(())
         })
     }
-    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         check_key_status!(self.memtable.get(key));
         {
             let tmp_memtable = self.locked_tmp_memtable.read()?;
@@ -84,7 +84,7 @@ impl SSTable {
         merging_threshold: u64,
         sparsity: u64,
         memtable_size_threshold: usize,
-    ) -> Result<Self, Error> {
+    ) -> DbResult<Self> {
         let description = format!("SS Table with merging threshold of {} files, sparsity of {} bytes and memtable size threshold of {} keys",
             merging_threshold, sparsity, memtable_size_threshold
         );
@@ -116,7 +116,7 @@ impl SSTable {
             join_handle: None,
         })
     }
-    fn flush_memtable_if_big(&mut self) -> Result<(), Error> {
+    fn flush_memtable_if_big(&mut self) -> DbResult<()> {
         if self.memtable.len() >= self.memtable_size_threshold {
             let moved = self.try_moving_data_to_tmp_memtable()?;
             if moved {
@@ -125,7 +125,7 @@ impl SSTable {
         }
         Ok(())
     }
-    fn try_moving_data_to_tmp_memtable(&mut self) -> Result<bool, Error> {
+    fn try_moving_data_to_tmp_memtable(&mut self) -> DbResult<bool> {
         if is_thread_running(&self.join_handle) {
             return Ok(false);
         }
@@ -165,7 +165,7 @@ impl SSTable {
         locked_tmp_memtable: Arc<RwLock<Memtable>>,
         locked_tmp_memtable_backup: Arc<RwLock<KVFile>>,
         locked_segmented_files_db: Arc<Mutex<SegmentedFilesDb<File, Factory, ReaderFactory>>>,
-    ) -> Result<(), Error> {
+    ) -> DbResult<()> {
         {
             let tmp_memtable = locked_tmp_memtable.read()?;
             if tmp_memtable.is_empty() {
@@ -189,7 +189,7 @@ impl SSTable {
 
         Ok(())
     }
-    fn swap_memtable_backup_files(&mut self) -> Result<(), Error> {
+    fn swap_memtable_backup_files(&mut self) -> DbResult<()> {
         {
             let mut tmp_memtable_backup = self.locked_tmp_memtable_backup.write()?;
             swap(&mut (*tmp_memtable_backup), &mut self.memtable_backup);
@@ -202,7 +202,7 @@ impl SSTable {
     fn recover_memtable_from_backup(
         dir_path: &str,
         file_name: &str,
-    ) -> Result<(Memtable, KVFile), Error> {
+    ) -> DbResult<(Memtable, KVFile)> {
         let mut backup = KVFile::new(dir_path, file_name)?;
         let mut memtable = Memtable::new();
         for line_result in backup.iter()? {

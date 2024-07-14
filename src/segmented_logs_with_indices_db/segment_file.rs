@@ -8,6 +8,7 @@ use crate::{
     },
 };
 use KeyStatus::{Deleted, Present};
+use crate::error::DbResult;
 
 pub struct Reader<'a> {
     kvfile: KVFile,
@@ -15,7 +16,7 @@ pub struct Reader<'a> {
 }
 
 impl<'a> SegmentReader<'a> for Reader<'a> {
-    fn get_status(&mut self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
+    fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>> {
         get_status(self.index, &mut self.kvfile, key)
     }
 }
@@ -29,13 +30,13 @@ pub struct File {
 impl SegmentFile for File {
     type Reader<'a> = Reader<'a>;
 
-    fn get_status(&mut self, key: &str) -> Result<Option<KeyStatus<String>>, Error> {
+    fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>> {
         get_status(&self.index, &mut self.kvfile, key)
     }
-    fn ready_to_be_archived(&self) -> Result<bool, Error> {
+    fn ready_to_be_archived(&self) -> DbResult<bool> {
         Ok(self.kvfile.size()? > self.file_size_threshold)
     }
-    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> Result<(), Error> {
+    fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {
         self.kvfile.append_line(key, &status).and_then(|offset| {
             Ok(self.index.set(
                 key,
@@ -46,7 +47,7 @@ impl SegmentFile for File {
             ))
         })
     }
-    fn absorb<'a>(&mut self, other: &mut Self::Reader<'a>) -> Result<(), Error> {
+    fn absorb<'a>(&mut self, other: &mut Self::Reader<'a>) -> DbResult<()> {
         for key in other.index.keys() {
             if self.index.get(key).is_none() {
                 self.set_status(key.as_str(), &other.get_status(key)?.unwrap())?;
@@ -54,10 +55,10 @@ impl SegmentFile for File {
         }
         Ok(())
     }
-    fn rename(&mut self, new_file_name: &str) -> Result<(), Error> {
+    fn rename(&mut self, new_file_name: &str) -> DbResult<()> {
         self.kvfile.rename(new_file_name)
     }
-    fn delete(mut self) -> Result<(), Error> {
+    fn delete(mut self) -> DbResult<()> {
         self.kvfile.delete()
     }
 }
@@ -65,7 +66,7 @@ impl SegmentFile for File {
 pub struct ReaderFactory {}
 
 impl SegmentReaderFactory<File> for ReaderFactory {
-    fn new<'a>(&self, file: &'a File) -> Result<<File as SegmentFile>::Reader<'a>, Error> {
+    fn new<'a>(&self, file: &'a File) -> DbResult<<File as SegmentFile>::Reader<'a>> {
         return Ok(Reader {
             kvfile: KVFile::copy(&file.kvfile)?,
             index: &file.index,
@@ -79,7 +80,7 @@ pub struct Factory {
 }
 
 impl SegmentFileFactory<File> for Factory {
-    fn new(&self, file_name: &str) -> Result<File, Error> {
+    fn new(&self, file_name: &str) -> DbResult<File> {
         let kvfile = KVFile::new(&self.dir_path, file_name)?;
         let index = InMemoryDb::new();
         Ok(File {
@@ -88,7 +89,7 @@ impl SegmentFileFactory<File> for Factory {
             file_size_threshold: self.file_size_threshold,
         })
     }
-    fn from_disk(&self, file_name: &str) -> Result<File, Error> {
+    fn from_disk(&self, file_name: &str) -> DbResult<File> {
         let mut kvfile = KVFile::new(&self.dir_path, file_name)?;
         let mut index = InMemoryDb::new();
         for line_result in kvfile.iter()? {
@@ -110,7 +111,7 @@ fn get_status(
     index: &InMemoryDb<KeyStatus<u64>>,
     kvfile: &mut KVFile,
     key: &str,
-) -> Result<Option<KeyStatus<String>>, Error> {
+) -> DbResult<Option<KeyStatus<String>>> {
     match index.get(key) {
         Some(Present(offset)) => kvfile
             .read_at_offset(offset)

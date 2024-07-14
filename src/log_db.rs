@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::{DbResult, Error};
 use crate::kv_file::KVFile;
 use crate::kvdb::{KVDb, KeyStatus};
 
@@ -10,15 +10,15 @@ impl KVDb for LogDb {
     fn description(&self) -> String {
         "Log DB".to_string()
     }
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+    fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.file
             .append_line(key, &KeyStatus::Present(value.to_owned()))
             .and(Ok(()))
     }
-    fn delete(&mut self, key: &str) -> Result<(), Error> {
+    fn delete(&mut self, key: &str) -> DbResult<()> {
         self.file.append_line(key, &KeyStatus::Deleted).and(Ok(()))
     }
-    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         let mut value = None;
         for line_result in self.file.iter()? {
             let line = line_result?;
@@ -31,7 +31,7 @@ impl KVDb for LogDb {
 }
 
 impl LogDb {
-    pub fn new(dir_path: &str, file_name: &str) -> Result<LogDb, Error> {
+    pub fn new(dir_path: &str, file_name: &str) -> DbResult<LogDb> {
         Ok(LogDb {
             file: KVFile::new(dir_path, file_name)?,
         })

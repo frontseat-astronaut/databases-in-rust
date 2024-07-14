@@ -1,6 +1,5 @@
 use std::{fs::read_dir, path::PathBuf, thread::JoinHandle};
-
-use crate::error::Error;
+use crate::error::DbResult;
 
 #[macro_export]
 macro_rules! check_key_status {
@@ -15,8 +14,8 @@ macro_rules! check_key_status {
 
 pub fn process_dir_contents(
     dir_path: &str,
-    process_dir_status: &mut dyn FnMut(PathBuf) -> Result<(), Error>,
-) -> Result<(), Error> {
+    process_dir_status: &mut dyn FnMut(PathBuf) -> DbResult<()>,
+) -> DbResult<()> {
     let contents = read_dir(dir_path)?;
     for dir_status_result in contents {
         let dir_status = dir_status_result?;

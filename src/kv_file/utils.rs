@@ -4,12 +4,12 @@ use std::{
 };
 
 use crate::{error::Error, kvdb::KeyStatus};
-
+use crate::error::DbResult;
 use super::{DELIMITER, TOMBSTONE};
 
 pub fn read_line<T: Read>(
     reader: &mut BufReader<T>,
-) -> Result<Option<(String, KeyStatus<String>)>, Error> {
+) -> DbResult<Option<(String, KeyStatus<String>)>> {
     let mut buf = String::new();
     let bytes_read = reader.read_line(&mut buf)?;
     if bytes_read == 0 {
@@ -32,7 +32,7 @@ pub fn read_line<T: Read>(
     }
 }
 
-pub fn write_line(file: &mut File, key: &str, value: &KeyStatus<String>) -> Result<(), Error> {
+pub fn write_line(file: &mut File, key: &str, value: &KeyStatus<String>) -> DbResult<()> {
     if key.contains(DELIMITER) {
         return Err(Error::InvalidInput(format!(
             "key must not have '{}'",

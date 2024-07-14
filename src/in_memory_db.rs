@@ -1,5 +1,6 @@
 use crate::{error::Error, kvdb::KVDb};
 use std::collections::HashMap;
+use crate::error::DbResult;
 
 pub struct InMemoryDb<T: Clone> {
     map: HashMap<String, T>,
@@ -9,13 +10,13 @@ impl KVDb for InMemoryDb<String> {
     fn description(&self) -> String {
         "In-Memory DB".to_string()
     }
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+    fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         Ok(Self::set(self, key, &value.to_string()))
     }
-    fn delete(&mut self, key: &str) -> Result<(), Error> {
+    fn delete(&mut self, key: &str) -> DbResult<()> {
         Ok(Self::delete(self, key))
     }
-    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         Ok(Self::get(&self, key))
     }
 }

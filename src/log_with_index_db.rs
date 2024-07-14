@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::DbResult;
 use crate::in_memory_db::InMemoryDb;
 use crate::kv_file::{KVFile, KVLine};
 use crate::kvdb::{KVDb, KeyStatus};
@@ -12,17 +12,17 @@ impl KVDb for LogWithIndexDb {
     fn description(&self) -> String {
         "Log with index DB".to_string()
     }
-    fn set(&mut self, key: &str, value: &str) -> Result<(), Error> {
+    fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.file
             .append_line(key, &KeyStatus::Present(value.to_string()))
             .and_then(|offset| Ok(self.index.set(key, &offset)))
     }
-    fn delete(&mut self, key: &str) -> Result<(), Error> {
+    fn delete(&mut self, key: &str) -> DbResult<()> {
         self.file
             .append_line(key, &KeyStatus::Deleted)
             .and_then(|_| Ok(self.index.delete(key)))
     }
-    fn get(&mut self, key: &str) -> Result<Option<String>, Error> {
+    fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         match self.index.get(key) {
             Some(offset) => self.file.read_at_offset(offset),
             None => Ok(None),
@@ -31,7 +31,7 @@ impl KVDb for LogWithIndexDb {
 }
 
 impl LogWithIndexDb {
-    pub fn new(dir_path: &str, file_name: &str) -> Result<LogWithIndexDb, Error> {
+    pub fn new(dir_path: &str, file_name: &str) -> DbResult<LogWithIndexDb> {
         let mut index = InMemoryDb::new();
         let mut file = KVFile::new(dir_path, file_name)?;
         for line_result in file.iter()? {
