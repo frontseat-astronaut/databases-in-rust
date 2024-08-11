@@ -1,14 +1,13 @@
 use std::mem::replace;
 
+use crate::error::DbResult;
 use crate::{
-    error::Error,
     kv_file::{KVFile, KVLine},
     kvdb::KeyStatus,
     segmented_files_db::segment_file::{
         SegmentFile, SegmentFileFactory, SegmentReader, SegmentReaderFactory,
     },
 };
-use crate::error::DbResult;
 
 const TMP_FILE_NAME: &str = "merged_tmp_file.txt";
 

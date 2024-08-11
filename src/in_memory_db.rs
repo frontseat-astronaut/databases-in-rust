@@ -1,6 +1,6 @@
-use crate::{error::Error, kvdb::KVDb};
-use std::collections::HashMap;
 use crate::error::DbResult;
+use crate::kvdb::KVDb;
+use std::collections::HashMap;
 
 pub struct InMemoryDb<T: Clone> {
     map: HashMap<String, T>,

@@ -1,4 +1,4 @@
-use crate::error::{DbResult, Error};
+use crate::error::DbResult;
 use crate::kv_file::KVFile;
 use crate::kvdb::{KVDb, KeyStatus};
 

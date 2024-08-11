@@ -1,5 +1,5 @@
+use crate::error::DbResult;
 use crate::{
-    error::Error,
     in_memory_db::InMemoryDb,
     kv_file::KVFile,
     kvdb::KeyStatus,
@@ -8,7 +8,6 @@ use crate::{
     },
 };
 use KeyStatus::{Deleted, Present};
-use crate::error::DbResult;
 
 pub struct Reader<'a> {
     kvfile: KVFile,

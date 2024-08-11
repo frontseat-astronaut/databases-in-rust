@@ -1,12 +1,11 @@
 use segment_file::ReaderFactory;
 
+use self::segment_file::{Factory, File};
+use crate::error::DbResult;
 use crate::{
-    error::Error,
     kvdb::KVDb,
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
 };
-use crate::error::DbResult;
-use self::segment_file::{Factory, File};
 
 mod segment_file;
 

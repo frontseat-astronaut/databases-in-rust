@@ -1,5 +1,5 @@
-use crate::{error::Error, kvdb::KeyStatus};
 use crate::error::DbResult;
+use crate::kvdb::KeyStatus;
 
 pub trait SegmentReader<'a> {
     fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>>;
