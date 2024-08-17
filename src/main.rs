@@ -8,6 +8,7 @@ use segmented_logs_with_indices_db::SegmentedLogsWithIndicesDb;
 use sstable::SSTable;
 use test::{correctness_test::CorrectnessTest, latency_test::LatencyTest, Test};
 
+mod btree;
 mod error;
 mod in_memory_db;
 mod kv_file;
