@@ -22,7 +22,7 @@ pub struct KVLine {
 }
 
 pub struct KVFile {
-    dir_path: String,
+    pub dir_path: String,
     pub file_name: String,
     file: Option<File>,
 }

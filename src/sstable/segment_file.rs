@@ -111,6 +111,10 @@ impl SegmentFile for File {
     fn rename(&mut self, new_file_name: &str) -> DbResult<()> {
         self.kvfile.rename(new_file_name)
     }
+    fn compact(&mut self) -> DbResult<()> {
+        // TODO
+        Ok(())
+    }
     fn delete(mut self) -> DbResult<()> {
         self.kvfile.delete()
     }

@@ -7,15 +7,15 @@ use std::{
 
 use segment_file::SegmentReaderFactory;
 
+use self::segment::Segment;
+use self::segment_file::{SegmentFile, SegmentFileFactory};
+use crate::error::DbResult;
 use crate::{
     check_key_status,
     error::Error,
     kvdb::KeyStatus::{Deleted, Present},
     utils::{is_thread_running, process_dir_contents},
 };
-use crate::error::DbResult;
-use self::segment::Segment;
-use self::segment_file::{SegmentFile, SegmentFileFactory};
 
 mod segment;
 pub mod segment_file;
@@ -189,6 +189,8 @@ where
                 let mut segment_reader = reader_factory.new(&file)?;
                 merged_segment_file.absorb(&mut segment_reader)?;
             }
+
+            merged_segment_file.compact()?;
 
             {
                 let mut past_segments = locked_past_segments.write()?;

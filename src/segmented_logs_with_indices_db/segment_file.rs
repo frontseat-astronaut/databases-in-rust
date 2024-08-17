@@ -7,7 +7,10 @@ use crate::{
         SegmentFile, SegmentFileFactory, SegmentReader, SegmentReaderFactory,
     },
 };
+use std::mem::replace;
 use KeyStatus::{Deleted, Present};
+
+const TMP_COMPACTION_FILE_NAME: &str = "tmp_compaction_file.txt";
 
 pub struct Reader<'a> {
     kvfile: KVFile,
@@ -36,15 +39,7 @@ impl SegmentFile for File {
         Ok(self.kvfile.size()? > self.file_size_threshold)
     }
     fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {
-        self.kvfile.append_line(key, &status).and_then(|offset| {
-            Ok(self.index.set(
-                key,
-                &match status {
-                    Present(_) => Present(offset),
-                    Deleted => Deleted,
-                },
-            ))
-        })
+        set_status(&mut self.index, &mut self.kvfile, key, status)
     }
     fn absorb<'a>(&mut self, other: &mut Self::Reader<'a>) -> DbResult<()> {
         for key in other.index.keys() {
@@ -56,6 +51,28 @@ impl SegmentFile for File {
     }
     fn rename(&mut self, new_file_name: &str) -> DbResult<()> {
         self.kvfile.rename(new_file_name)
+    }
+    fn compact(&mut self) -> DbResult<()> {
+        let mut compact_kvfile = KVFile::new(&self.kvfile.dir_path, TMP_COMPACTION_FILE_NAME)?;
+        let mut compact_index = InMemoryDb::new();
+        for key in self.index.keys() {
+            if let Some(Present(value)) = get_status(&self.index, &mut self.kvfile, key)? {
+                set_status(
+                    &mut compact_index,
+                    &mut compact_kvfile,
+                    key,
+                    &Present(value),
+                )?;
+            }
+        }
+
+        self.index = compact_index;
+        let mut old_kvfile = replace(&mut self.kvfile, compact_kvfile);
+        let file_name = (&old_kvfile.file_name).to_string();
+        old_kvfile.delete()?;
+        self.kvfile.rename(&file_name)?;
+
+        Ok(())
     }
     fn delete(mut self) -> DbResult<()> {
         self.kvfile.delete()
@@ -118,4 +135,21 @@ fn get_status(
         Some(Deleted) => Ok(Some(Deleted)),
         None => Ok(None),
     }
+}
+
+fn set_status(
+    index: &mut InMemoryDb<KeyStatus<u64>>,
+    kvfile: &mut KVFile,
+    key: &str,
+    status: &KeyStatus<String>,
+) -> DbResult<()> {
+    kvfile.append_line(key, &status).and_then(|offset| {
+        Ok(index.set(
+            key,
+            &match status {
+                Present(_) => Present(offset),
+                Deleted => Deleted,
+            },
+        ))
+    })
 }
