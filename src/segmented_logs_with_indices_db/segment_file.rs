@@ -35,7 +35,7 @@ impl SegmentFile for File {
     fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>> {
         get_status(&self.index, &mut self.kvfile, key)
     }
-    fn ready_to_be_archived(&self) -> DbResult<bool> {
+    fn ready_to_be_archived(&mut self) -> DbResult<bool> {
         Ok(self.kvfile.size()? > self.file_size_threshold)
     }
     fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {

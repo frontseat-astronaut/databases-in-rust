@@ -9,7 +9,7 @@ pub trait SegmentFile {
     type Reader<'a>: SegmentReader<'a>;
 
     fn get_status(&mut self, key: &str) -> DbResult<Option<KeyStatus<String>>>;
-    fn ready_to_be_archived(&self) -> DbResult<bool> {
+    fn ready_to_be_archived(&mut self) -> DbResult<bool> {
         Ok(true)
     }
 

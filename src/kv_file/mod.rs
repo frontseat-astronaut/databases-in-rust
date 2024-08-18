@@ -44,14 +44,10 @@ impl KVFile {
     pub fn iter_from_offset(&mut self, offset: u64) -> DbResult<KVFileIterator> {
         self.create_iterator(offset)
     }
-    pub fn size(&self) -> DbResult<u64> {
-        match self.file {
-            None => Ok(0),
-            Some(ref file) => {
-                let metadata = file.metadata()?;
-                Ok(metadata.size())
-            }
-        }
+    pub fn size(&mut self) -> DbResult<u64> {
+        self.open_file()?;
+        let metadata = self.file.as_mut().unwrap().metadata()?;
+        Ok(metadata.size())
     }
     pub fn append_line(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<u64> {
         self.open_file()?;

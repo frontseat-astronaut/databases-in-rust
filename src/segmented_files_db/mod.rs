@@ -80,7 +80,7 @@ where
         let should_do = self
             .current_segment
             .locked_file
-            .read()?
+            .write()?
             .ready_to_be_archived()?;
         if should_do {
             let past_segments_len;
