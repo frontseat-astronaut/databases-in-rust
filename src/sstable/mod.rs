@@ -5,6 +5,8 @@ use std::{
     thread::{spawn, JoinHandle},
 };
 
+use self::segment_file::{Factory, File, ReaderFactory};
+use crate::error::DbResult;
 use crate::{
     check_key_status,
     error::Error,
@@ -16,8 +18,6 @@ use crate::{
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
     utils::is_thread_running,
 };
-use crate::error::DbResult;
-use self::segment_file::{Factory, File, ReaderFactory};
 
 const MEMTABLE_BACKUP_FILE_NAME: &str = "memtable_backup.txt";
 const TMP_MEMTABLE_BACKUP_FILE_NAME: &str = "tmp_memtable_backup.txt";
@@ -34,7 +34,7 @@ pub struct SSTable {
     locked_tmp_memtable: Arc<RwLock<Memtable>>,
     locked_tmp_memtable_backup: Arc<RwLock<KVFile>>,
     locked_segmented_files_db: Arc<Mutex<SegmentedFilesDb<File, Factory, ReaderFactory>>>,
-    join_handle: Option<JoinHandle<()>>,
+    flush_memtable_thread_join_handle: Option<JoinHandle<()>>,
 }
 
 impl KVDb for SSTable {
@@ -72,7 +72,7 @@ impl KVDb for SSTable {
 
 impl Drop for SSTable {
     fn drop(&mut self) {
-        if let Some(handle) = self.join_handle.take() {
+        if let Some(handle) = self.flush_memtable_thread_join_handle.take() {
             let _ = handle.join();
         }
     }
@@ -113,7 +113,7 @@ impl SSTable {
                 },
                 ReaderFactory {},
             )?)),
-            join_handle: None,
+            flush_memtable_thread_join_handle: None,
         })
     }
     fn flush_memtable_if_big(&mut self) -> DbResult<()> {
@@ -126,7 +126,7 @@ impl SSTable {
         Ok(())
     }
     fn try_moving_data_to_tmp_memtable(&mut self) -> DbResult<bool> {
-        if is_thread_running(&self.join_handle) {
+        if is_thread_running(&self.flush_memtable_thread_join_handle) {
             return Ok(false);
         }
         let should_move;
@@ -145,19 +145,20 @@ impl SSTable {
         Ok(should_move)
     }
     fn flush_tmp_memtable_in_background(&mut self) {
-        if let Some(handle) = self.join_handle.take() {
-            let _ = handle.join();
-        }
+        assert_eq!(
+            is_thread_running(&self.flush_memtable_thread_join_handle),
+            false
+        );
         let locked_tmp_memtable = Arc::clone(&self.locked_tmp_memtable);
         let locked_tmp_memtable_backup = Arc::clone(&self.locked_tmp_memtable_backup);
         let locked_segmented_files_db = Arc::clone(&self.locked_segmented_files_db);
-        self.join_handle = Some(spawn(move || {
+        self.flush_memtable_thread_join_handle = Some(spawn(move || {
             if let Err(e) = Self::flush_tmp_memtable(
                 locked_tmp_memtable,
                 locked_tmp_memtable_backup,
                 locked_segmented_files_db,
             ) {
-                println!("error in flushing memtable: {}", e);
+                panic!("error in flushing memtable: {}", e);
             }
         }));
     }
@@ -193,7 +194,7 @@ impl SSTable {
         {
             let mut tmp_memtable_backup = self.locked_tmp_memtable_backup.write()?;
             swap(&mut (*tmp_memtable_backup), &mut self.memtable_backup);
-            self.memtable_backup.rename("TMP_FILE.txt")?;
+            self.memtable_backup.rename("tmp_backup_swap_file.txt")?;
             tmp_memtable_backup.rename(TMP_MEMTABLE_BACKUP_FILE_NAME)?;
         }
         self.memtable_backup.rename(MEMTABLE_BACKUP_FILE_NAME)?;
