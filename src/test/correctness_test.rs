@@ -24,7 +24,6 @@ impl Test for CorrectnessTest {
                     match db.get(key) {
                         Ok(got) => {
                             if want != got.as_ref() {
-                                println!("{i}");
                                 panic!(
                                     "Test failed: expected {:?} value for key {}, got {:?}",
                                     want, key, got

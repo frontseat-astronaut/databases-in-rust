@@ -1,11 +1,3 @@
-use segment_file::SegmentReaderFactory;
-use std::{
-    fs::create_dir_all,
-    mem::replace,
-    sync::{Arc, RwLock},
-    thread::{spawn, JoinHandle},
-};
-
 use self::segment::Segment;
 use self::segment_file::{SegmentFile, SegmentFileFactory};
 use crate::error::DbResult;
@@ -15,6 +7,14 @@ use crate::{
     error::Error,
     kvdb::KeyStatus::{Deleted, Present},
     utils::{is_thread_running, process_dir_contents},
+};
+use segment_file::SegmentReaderFactory;
+use std::collections::VecDeque;
+use std::{
+    fs::create_dir_all,
+    mem::replace,
+    sync::{Arc, RwLock},
+    thread::{spawn, JoinHandle},
 };
 
 mod segment;
@@ -33,7 +33,7 @@ where
 {
     merging_threshold: u64,
     segment_creation_policy: SegmentCreationPolicy,
-    locked_past_segments: Arc<RwLock<Vec<Segment<F>>>>,
+    locked_past_segments: Arc<RwLock<VecDeque<Segment<F>>>>,
     current_segment: Segment<F>,
     file_factory: Arc<U>,
     reader_factory: Arc<V>,
@@ -86,7 +86,7 @@ where
                 let mut past_segments = self.locked_past_segments.write()?;
 
                 let latest_past_segment_id: usize = past_segments
-                    .last()
+                    .back()
                     .map(|segment| segment.id + 1)
                     .get_or_insert(0)
                     .clone();
@@ -98,7 +98,7 @@ where
                 let new_segment = Segment::new(new_segment_id, &(*self.file_factory))?;
                 let latest_past_segment = replace(&mut self.current_segment, new_segment);
 
-                past_segments.push(latest_past_segment);
+                past_segments.push_back(latest_past_segment);
                 past_segments_len = past_segments.len();
             }
 
@@ -155,7 +155,7 @@ where
         Ok(SegmentedFilesDb {
             merging_threshold,
             segment_creation_policy,
-            locked_past_segments: Arc::new(RwLock::new(segments)),
+            locked_past_segments: Arc::new(RwLock::new(VecDeque::from(segments))),
             current_segment: current_segment,
             reader_factory: Arc::new(reader_factory),
             file_factory: Arc::new(file_factory),
@@ -188,28 +188,32 @@ where
         }));
     }
     fn merge_past_segments(
-        locked_past_segments: Arc<RwLock<Vec<Segment<F>>>>,
+        locked_past_segments: Arc<RwLock<VecDeque<Segment<F>>>>,
         file_factory: Arc<U>,
         reader_factory: Arc<V>,
     ) -> DbResult<()> {
         let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
+        let mut num_past_segments_merged = 0;
         for segment in locked_past_segments.read()?.iter().rev() {
             let file = segment.locked_file.read()?;
             let mut segment_reader = reader_factory.new(&file)?;
             merged_segment_file.absorb(&mut segment_reader)?;
+            num_past_segments_merged += 1;
         }
 
         merged_segment_file.compact()?;
 
         {
             let mut past_segments = locked_past_segments.write()?;
-            while !past_segments.is_empty() {
-                let past_segment = past_segments.pop().unwrap();
+            // more segments might have been added during compaction
+            assert!(num_past_segments_merged <= past_segments.len());
+            for _ in 0..num_past_segments_merged {
+                let past_segment = past_segments.pop_front().unwrap();
                 past_segment.locked_file.into_inner()?.delete()?;
             }
 
-            past_segments.push(Segment::from_file(merged_segment_file, 0)?)
+            past_segments.push_front(Segment::from_file(merged_segment_file, 0)?)
         }
 
         Ok(())
