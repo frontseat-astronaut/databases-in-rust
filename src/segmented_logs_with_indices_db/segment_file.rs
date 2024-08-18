@@ -55,6 +55,7 @@ impl SegmentFile for File {
         let mut compact_kvfile = KVFile::new(&self.kvfile.dir_path, TMP_COMPACTION_FILE_NAME)?;
         let mut compact_index = InMemoryDb::new();
         for key in self.index.keys() {
+            // skip deleted entries
             if let Some(Present(value)) = get_status(&self.index, &mut self.kvfile, key)? {
                 set_status(
                     &mut compact_index,

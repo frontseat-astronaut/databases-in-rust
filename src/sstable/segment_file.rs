@@ -146,6 +146,7 @@ impl SegmentFile for File {
                     index_iter.next();
                 }
             }
+            // skip deleted entries
             if let KeyStatus::Present(_) = line.status {
                 lines_buf.push_back(line);
             }
