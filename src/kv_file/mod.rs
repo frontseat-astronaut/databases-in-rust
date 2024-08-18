@@ -73,6 +73,9 @@ impl KVFile {
         }
     }
     pub fn rename(&mut self, new_file_name: &str) -> DbResult<()> {
+        if new_file_name.eq(&self.file_name) {
+            return Ok(());
+        }
         self.close_file()?;
 
         let old_file_path = self.get_file_path();

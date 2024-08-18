@@ -212,8 +212,11 @@ where
                 let past_segment = past_segments.pop_front().unwrap();
                 past_segment.locked_file.into_inner()?.delete()?;
             }
+            past_segments.push_front(Segment::from_file(merged_segment_file, 0)?);
 
-            past_segments.push_front(Segment::from_file(merged_segment_file, 0)?)
+            for (idx, segment) in past_segments.iter_mut().enumerate() {
+                segment.change_id(idx)?;
+            }
         }
 
         Ok(())
