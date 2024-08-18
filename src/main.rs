@@ -95,9 +95,11 @@ fn run_test_suite<T: Test>(test_suite: T, mut dbs: VecDeque<Box<dyn KVDb>>) {
 
 fn main() {
     /* CORRECTNESS TESTS */
-    let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9, false);
-    let dbs = prepare_dbs(false, false);
-    run_test_suite(correctness_test_suite, dbs);
+    for _ in 0..5 {
+        let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9, false);
+        let dbs = prepare_dbs(false, false);
+        run_test_suite(correctness_test_suite, dbs);
+    }
 
     // /* LATENCY TESTS */
     // let latency_test_suite = LatencyTest::new(50000, 20000, 0.5, 0.7, 0.8, false);
