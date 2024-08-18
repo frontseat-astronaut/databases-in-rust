@@ -34,7 +34,12 @@ impl SegmentFile for File {
     type Reader<'a> = Reader<'a>;
     fn set_status(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<()> {
         self.kvfile.append_line(key, status).and_then(|offset| {
-            if self.sparse_index.is_empty() || offset - self.last_indexed_offset > self.sparsity {
+            if should_create_new_index_entry(
+                &self.sparse_index,
+                offset,
+                self.last_indexed_offset,
+                self.sparsity,
+            ) {
                 self.sparse_index.push((key.to_owned(), offset));
                 self.last_indexed_offset = offset;
             }
@@ -91,7 +96,12 @@ impl SegmentFile for File {
                     };
                     if should_write {
                         let offset = new_file.append_line(&prev_key, &prev_status)?;
-                        if new_index.is_empty() || offset - last_indexed_offset > self.sparsity {
+                        if should_create_new_index_entry(
+                            &new_index,
+                            offset,
+                            last_indexed_offset,
+                            self.sparsity,
+                        ) {
                             new_index.push((prev_key.to_owned(), offset));
                             last_indexed_offset = offset;
                         }
@@ -105,6 +115,7 @@ impl SegmentFile for File {
         old_file.delete()?;
         self.kvfile.rename(&file_name)?;
         self.sparse_index = new_index;
+        self.last_indexed_offset = last_indexed_offset;
 
         Ok(())
     }
@@ -154,7 +165,12 @@ impl SegmentFileFactory<File> for Factory {
         let mut sparse_index = vec![];
         for line_result in kvfile.iter()? {
             let KVLine { key, offset, .. } = line_result?;
-            if sparse_index.is_empty() || offset - last_indexed_offset > self.sparsity {
+            if should_create_new_index_entry(
+                &sparse_index,
+                offset,
+                last_indexed_offset,
+                self.sparsity,
+            ) {
                 sparse_index.push((key.to_owned(), offset));
                 last_indexed_offset = offset;
             }
@@ -194,4 +210,13 @@ fn get_status(
         }
     }
     Ok(status)
+}
+
+fn should_create_new_index_entry<T>(
+    index: &Vec<T>,
+    offset: u64,
+    last_indexed_offset: u64,
+    sparsity: u64,
+) -> bool {
+    index.is_empty() || offset - last_indexed_offset > sparsity
 }

@@ -1,11 +1,10 @@
+use segment_file::SegmentReaderFactory;
 use std::{
     fs::create_dir_all,
     mem::replace,
     sync::{Arc, RwLock},
     thread::{spawn, JoinHandle},
 };
-
-use segment_file::SegmentReaderFactory;
 
 use self::segment::Segment;
 use self::segment_file::{SegmentFile, SegmentFileFactory};
@@ -39,7 +38,7 @@ where
     current_segment: Segment<F>,
     file_factory: Arc<U>,
     reader_factory: Arc<V>,
-    join_handle: Option<JoinHandle<DbResult<()>>>,
+    merging_thread_join_handle: Option<JoinHandle<()>>,
 }
 
 impl<F, U, V> SegmentedFilesDb<F, U, V>
@@ -119,7 +118,7 @@ where
     V: SegmentReaderFactory<F> + Sync + Send + 'static,
 {
     fn drop(&mut self) {
-        if let Some(handle) = self.join_handle.take() {
+        if let Some(handle) = self.merging_thread_join_handle.take() {
             let _ = handle.join();
         }
     }
@@ -161,11 +160,11 @@ where
             current_segment: current_segment,
             reader_factory: Arc::new(reader_factory),
             file_factory: Arc::new(file_factory),
-            join_handle: None,
+            merging_thread_join_handle: None,
         })
     }
     fn maybe_create_fresh_segment(&mut self) -> DbResult<()> {
-        if is_thread_running(&self.join_handle) {
+        if is_thread_running(&self.merging_thread_join_handle) {
             return Ok(());
         }
         if let SegmentCreationPolicy::Automatic = self.segment_creation_policy {
@@ -174,35 +173,46 @@ where
         Ok(())
     }
     fn maybe_merge_past_segments_in_background(&mut self) {
-        if is_thread_running(&self.join_handle) {
+        if is_thread_running(&self.merging_thread_join_handle) {
             return;
         }
 
         let locked_past_segments = Arc::clone(&self.locked_past_segments);
         let file_factory = Arc::clone(&self.file_factory);
         let reader_factory = Arc::clone(&self.reader_factory);
-        self.join_handle = Some(spawn(move || -> DbResult<()> {
-            let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
-
-            for segment in locked_past_segments.read()?.iter().rev() {
-                let file = segment.locked_file.read()?;
-                let mut segment_reader = reader_factory.new(&file)?;
-                merged_segment_file.absorb(&mut segment_reader)?;
-            }
-
-            merged_segment_file.compact()?;
-
+        self.merging_thread_join_handle = Some(spawn(move || {
+            if let Err(e) =
+                Self::merge_past_segments(locked_past_segments, file_factory, reader_factory)
             {
-                let mut past_segments = locked_past_segments.write()?;
-                while !past_segments.is_empty() {
-                    let past_segment = past_segments.pop().unwrap();
-                    past_segment.locked_file.into_inner()?.delete()?;
-                }
+                panic!("error in merging thread: {e}")
+            }
+        }));
+    }
+    fn merge_past_segments(
+        locked_past_segments: Arc<RwLock<Vec<Segment<F>>>>,
+        file_factory: Arc<U>,
+        reader_factory: Arc<V>,
+    ) -> DbResult<()> {
+        let mut merged_segment_file = file_factory.new(TMP_SEGMENT_FILE_NAME)?;
 
-                past_segments.push(Segment::from_file(merged_segment_file, 0)?)
+        for segment in locked_past_segments.read()?.iter().rev() {
+            let file = segment.locked_file.read()?;
+            let mut segment_reader = reader_factory.new(&file)?;
+            merged_segment_file.absorb(&mut segment_reader)?;
+        }
+
+        merged_segment_file.compact()?;
+
+        {
+            let mut past_segments = locked_past_segments.write()?;
+            while !past_segments.is_empty() {
+                let past_segment = past_segments.pop().unwrap();
+                past_segment.locked_file.into_inner()?.delete()?;
             }
 
-            Ok(())
-        }));
+            past_segments.push(Segment::from_file(merged_segment_file, 0)?)
+        }
+
+        Ok(())
     }
 }
