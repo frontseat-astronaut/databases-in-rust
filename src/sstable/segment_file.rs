@@ -112,43 +112,28 @@ impl SegmentFile for File {
         self.kvfile.rename(new_file_name)
     }
     fn compact(&mut self) -> DbResult<()> {
+        let old_sparse_index = replace(&mut self.sparse_index, vec![]);
+        drop(old_sparse_index);
+
         let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_COMPACTION_FILE_NAME)?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
 
-        let mut flush_lines_buf = |lines_buf: &mut VecDeque<KVLine>| -> DbResult<()> {
-            while !lines_buf.is_empty() {
-                let line_to_add = lines_buf.pop_front().unwrap();
+        let mut file_iter = self.kvfile.iter()?;
+        loop {
+            let Some(line) = file_iter.try_next()? else {
+                break;
+            };
+            // skip deleted entries
+            if let KeyStatus::Present(_) = line.status {
                 set_status(
                     &mut new_index,
                     &mut last_indexed_offset,
                     self.sparsity,
                     &mut new_file,
-                    &line_to_add.key,
-                    &line_to_add.status,
+                    &line.key,
+                    &line.status,
                 )?;
-            }
-            Ok(())
-        };
-
-        let mut index_iter = self.sparse_index.iter().peekable();
-        let mut file_iter = self.kvfile.iter()?;
-        let mut lines_buf = VecDeque::<KVLine>::new();
-        loop {
-            let maybe_next_index_entry = index_iter.peek();
-            let Some(line) = file_iter.try_next()? else {
-                flush_lines_buf(&mut lines_buf)?;
-                break;
-            };
-            if let Some((_, next_index_offset)) = maybe_next_index_entry {
-                if line.offset.eq(next_index_offset) {
-                    flush_lines_buf(&mut lines_buf)?;
-                    index_iter.next();
-                }
-            }
-            // skip deleted entries
-            if let KeyStatus::Present(_) = line.status {
-                lines_buf.push_back(line);
             }
         }
 
