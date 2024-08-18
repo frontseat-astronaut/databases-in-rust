@@ -9,6 +9,7 @@ use std::{
 use self::segment::Segment;
 use self::segment_file::{SegmentFile, SegmentFileFactory};
 use crate::error::DbResult;
+use crate::tmp_file_names::TMP_SEGMENT_FILE_NAME;
 use crate::{
     check_key_status,
     error::Error,
@@ -18,8 +19,6 @@ use crate::{
 
 mod segment;
 pub mod segment_file;
-
-const TMP_SEGMENT_FILE_NAME: &str = "tmp.txt";
 
 pub enum SegmentCreationPolicy {
     Triggered,

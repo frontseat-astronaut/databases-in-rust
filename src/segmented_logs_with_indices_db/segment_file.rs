@@ -1,4 +1,5 @@
 use crate::error::DbResult;
+use crate::tmp_file_names::TMP_COMPACTION_FILE_NAME;
 use crate::{
     in_memory_db::InMemoryDb,
     kv_file::KVFile,
@@ -9,8 +10,6 @@ use crate::{
 };
 use std::mem::replace;
 use KeyStatus::{Deleted, Present};
-
-const TMP_COMPACTION_FILE_NAME: &str = "tmp_compaction_file.txt";
 
 pub struct Reader<'a> {
     kvfile: KVFile,

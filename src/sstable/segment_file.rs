@@ -1,6 +1,7 @@
 use std::mem::replace;
 
 use crate::error::DbResult;
+use crate::tmp_file_names::TMP_MERGING_FILE_NAME;
 use crate::{
     kv_file::{KVFile, KVLine},
     kvdb::KeyStatus,
@@ -8,8 +9,6 @@ use crate::{
         SegmentFile, SegmentFileFactory, SegmentReader, SegmentReaderFactory,
     },
 };
-
-const TMP_FILE_NAME: &str = "merged_tmp_file.txt";
 
 pub struct Reader<'a> {
     kvfile: KVFile,
@@ -49,7 +48,7 @@ impl SegmentFile for File {
         get_status(&self.sparse_index, &mut self.kvfile, key)
     }
     fn absorb<'a>(&mut self, other: &mut Reader<'a>) -> DbResult<()> {
-        let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_FILE_NAME)?;
+        let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_MERGING_FILE_NAME)?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
 

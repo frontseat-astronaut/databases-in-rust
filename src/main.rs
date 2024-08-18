@@ -18,6 +18,7 @@ mod segmented_files_db;
 mod segmented_logs_with_indices_db;
 mod sstable;
 mod test;
+mod tmp_file_names;
 mod utils;
 
 fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box<dyn KVDb>> {

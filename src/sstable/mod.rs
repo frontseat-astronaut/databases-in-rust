@@ -7,6 +7,9 @@ use std::{
 
 use self::segment_file::{Factory, File, ReaderFactory};
 use crate::error::DbResult;
+use crate::tmp_file_names::{
+    MEMTABLE_BACKUP_FILE_NAME, TMP_MEMTABLE_BACKUP_FILE_NAME, TMP_MEMTABLE_BACKUP_SWAP_FILE_NAME,
+};
 use crate::{
     check_key_status,
     error::Error,
@@ -18,9 +21,6 @@ use crate::{
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
     utils::is_thread_running,
 };
-
-const MEMTABLE_BACKUP_FILE_NAME: &str = "memtable_backup.txt";
-const TMP_MEMTABLE_BACKUP_FILE_NAME: &str = "tmp_memtable_backup.txt";
 
 mod segment_file;
 
@@ -194,7 +194,8 @@ impl SSTable {
         {
             let mut tmp_memtable_backup = self.locked_tmp_memtable_backup.write()?;
             swap(&mut (*tmp_memtable_backup), &mut self.memtable_backup);
-            self.memtable_backup.rename("tmp_backup_swap_file.txt")?;
+            self.memtable_backup
+                .rename(TMP_MEMTABLE_BACKUP_SWAP_FILE_NAME)?;
             tmp_memtable_backup.rename(TMP_MEMTABLE_BACKUP_FILE_NAME)?;
         }
         self.memtable_backup.rename(MEMTABLE_BACKUP_FILE_NAME)?;
