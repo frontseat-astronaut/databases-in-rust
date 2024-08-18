@@ -23,7 +23,6 @@ impl<'a> SegmentReader<'a> for Reader<'a> {
 }
 
 pub struct File {
-    dir_path: String,
     sparsity: u64,
     kvfile: KVFile,
     sparse_index: Vec<(String, u64)>,
@@ -50,7 +49,7 @@ impl SegmentFile for File {
         get_status(&self.sparse_index, &mut self.kvfile, key)
     }
     fn absorb<'a>(&mut self, other: &mut Reader<'a>) -> DbResult<()> {
-        let mut new_file = KVFile::new(&self.dir_path, TMP_FILE_NAME)?;
+        let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_FILE_NAME)?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
 
@@ -151,7 +150,6 @@ impl SegmentFileFactory<File> for Factory {
     fn new(&self, file_name: &str) -> DbResult<File> {
         let kvfile = KVFile::new(&self.dir_path, file_name)?;
         Ok(File {
-            dir_path: self.dir_path.clone(),
             sparsity: self.sparsity,
             kvfile,
             sparse_index: vec![],
@@ -177,7 +175,6 @@ impl SegmentFileFactory<File> for Factory {
         }
 
         Ok(File {
-            dir_path: self.dir_path.clone(),
             sparsity: self.sparsity,
             kvfile,
             sparse_index,
