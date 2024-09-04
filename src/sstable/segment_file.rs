@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::mem::replace;
 
 use crate::error::DbResult;

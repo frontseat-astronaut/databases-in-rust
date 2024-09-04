@@ -16,7 +16,6 @@ impl Test for CorrectnessTest {
             db.description()
         );
         let mut sot = HashMap::new();
-        let mut i = 0;
         for op in &self.operations {
             match op {
                 Operation::Read(ref key) => {
@@ -34,14 +33,12 @@ impl Test for CorrectnessTest {
                     }
                 }
                 Operation::Set(ref key, ref value) => {
-                    i += 1;
                     sot.insert(key, value.clone());
                     if let Err(e) = db.set(key, value) {
                         panic!("Test failed: unexpected error in write: {}", e);
                     }
                 }
                 Operation::Delete(ref key) => {
-                    i += 1;
                     sot.remove(key);
                     if let Err(e) = db.delete(key) {
                         panic!("Test failed: unexpected error in delete: {}", e);

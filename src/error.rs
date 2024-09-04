@@ -12,6 +12,7 @@ pub enum Error {
     InvalidInput(String),
     InvalidData(String),
     Wrapped(String, Box<Self>),
+    IndexOutOfBounds(usize),
 }
 
 impl fmt::Display for Error {
@@ -22,6 +23,7 @@ impl fmt::Display for Error {
             Error::InvalidInput(ref msg) => write!(f, "invalid input error: {}", msg),
             Error::InvalidData(ref msg) => write!(f, "invalid data error: {}", msg),
             Error::Wrapped(ref msg, ref err) => write!(f, "{}: {}", msg, err),
+            Error::IndexOutOfBounds(ref idx) => write!(f, "index out of bounds: {idx}"),
         }
     }
 }
@@ -34,6 +36,7 @@ impl error::Error for Error {
             Error::InvalidInput(_) => None,
             Error::InvalidData(_) => None,
             Error::Wrapped(_, ref err) => Some(err),
+            Error::IndexOutOfBounds(_) => None,
         }
     }
 }
