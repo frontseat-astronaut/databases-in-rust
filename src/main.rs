@@ -117,7 +117,7 @@ fn main() {
 
     // /* TESTS WITH LESSER NUMBER OF KEYS (because log db is so slow) */
     //let correctness_test_suite = CorrectnessTest::new(2000, 10000, 0.5, 0.7, 0.9, false);
-    //let dbs = prepare_dbs(false, false);
+    //let dbs = prepare_dbs(true, false);
     //run_test_suite(correctness_test_suite, dbs);
 
     // let latency_test_suite = LatencyTest::new(2000, 10000, 0.5, 0.7, 0.8, false);

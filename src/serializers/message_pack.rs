@@ -17,7 +17,7 @@ impl MessagePackSerializer {
 
 impl Serializer for MessagePackSerializer {
     fn write<T: Serialize, W: Write>(&self, data: T, writer: &mut BufWriter<W>) -> DbResult<()> {
-        let encoded = to_vec(&data).unwrap();
+        let encoded = to_vec(&data)?;
 
         let length = encoded.len() as u32;
         writer.write_all(&length.to_le_bytes())?;
