@@ -1,5 +1,5 @@
 use crate::error::DbResult;
-use crate::kv_file::KVFile;
+use crate::kv_file::{KVFile, KVFileSerializerOption};
 use crate::kvdb::{KVDb, KeyStatus};
 
 pub struct LogDb {
@@ -31,9 +31,13 @@ impl KVDb for LogDb {
 }
 
 impl LogDb {
-    pub fn new(dir_path: &str, file_name: &str) -> DbResult<LogDb> {
+    pub fn new(
+        dir_path: &str,
+        file_name: &str,
+        serializer: KVFileSerializerOption,
+    ) -> DbResult<LogDb> {
         Ok(LogDb {
-            file: KVFile::new(dir_path, file_name)?,
+            file: KVFile::new(dir_path, file_name, serializer)?,
         })
     }
 }

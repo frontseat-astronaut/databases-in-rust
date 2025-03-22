@@ -1,0 +1,10 @@
+{
+  "type": "record",
+  "name": "KVRecord",
+  "fields": [
+    { "name": "is_present", "type": "boolean" },
+    { "name": "key", "type": "string" },
+    { "name": "value", "type": "string" }
+  ]
+}
+

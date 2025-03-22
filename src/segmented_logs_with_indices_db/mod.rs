@@ -2,6 +2,7 @@ use segment_file::ReaderFactory;
 
 use self::segment_file::{Factory, File};
 use crate::error::DbResult;
+use crate::kv_file::KVFileSerializerOption;
 use crate::{
     kvdb::KVDb,
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
@@ -34,6 +35,7 @@ impl SegmentedLogsWithIndicesDb {
         dir_path: &str,
         file_size_threshold: u64,
         merging_threshold: u64,
+        serializer: KVFileSerializerOption,
     ) -> DbResult<SegmentedLogsWithIndicesDb> {
         let description = format!("Segmented logs with indices DB, with file size threshold of {} bytes and merging threshold of {} files", file_size_threshold, merging_threshold);
         Ok(SegmentedLogsWithIndicesDb {
@@ -45,6 +47,7 @@ impl SegmentedLogsWithIndicesDb {
                 Factory {
                     dir_path: dir_path.to_owned(),
                     file_size_threshold,
+                    serializer,
                 },
                 ReaderFactory {},
             )?,

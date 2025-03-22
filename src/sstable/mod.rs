@@ -6,7 +6,6 @@ use std::{
 };
 
 use self::segment_file::{Factory, File, ReaderFactory};
-use crate::error::DbResult;
 use crate::tmp_file_names::TMP_MEMTABLE_BACKUP_SWAP_FILE_NAME;
 use crate::{
     check_key_status,
@@ -19,6 +18,7 @@ use crate::{
     segmented_files_db::{SegmentCreationPolicy, SegmentedFilesDb},
     utils::is_thread_running,
 };
+use crate::{error::DbResult, kv_file::KVFileSerializerOption};
 
 pub const MEMTABLE_BACKUP_FILE_NAME: &str = "memtable_backup.txt";
 pub const TMP_MEMTABLE_BACKUP_FILE_NAME: &str = "tmp_memtable_backup.txt";
@@ -85,14 +85,18 @@ impl SSTable {
         merging_threshold: u64,
         sparsity: u64,
         memtable_size_threshold: usize,
+        serializer: KVFileSerializerOption,
     ) -> DbResult<Self> {
         let description = format!("SS Table with merging threshold of {} files, sparsity of {} bytes and memtable size threshold of {} keys",
             merging_threshold, sparsity, memtable_size_threshold
         );
         let (memtable, memtable_backup) =
-            Self::recover_memtable_from_backup(dir_path, MEMTABLE_BACKUP_FILE_NAME)?;
-        let (tmp_memtable, tmp_memtable_backup) =
-            Self::recover_memtable_from_backup(dir_path, TMP_MEMTABLE_BACKUP_FILE_NAME)?;
+            Self::recover_memtable_from_backup(dir_path, MEMTABLE_BACKUP_FILE_NAME, serializer)?;
+        let (tmp_memtable, tmp_memtable_backup) = Self::recover_memtable_from_backup(
+            dir_path,
+            TMP_MEMTABLE_BACKUP_FILE_NAME,
+            serializer,
+        )?;
         Ok(SSTable {
             description,
             memtable_size_threshold,
@@ -111,6 +115,7 @@ impl SSTable {
                 Factory {
                     dir_path: dir_path.to_owned(),
                     sparsity,
+                    serializer,
                 },
                 ReaderFactory {},
             )?)),
@@ -205,8 +210,9 @@ impl SSTable {
     fn recover_memtable_from_backup(
         dir_path: &str,
         file_name: &str,
+        serializer_option: KVFileSerializerOption,
     ) -> DbResult<(Memtable, KVFile)> {
-        let mut backup = KVFile::new(dir_path, file_name)?;
+        let mut backup = KVFile::new(dir_path, file_name, serializer_option)?;
         let mut memtable = Memtable::new();
         for line_result in backup.iter()? {
             let line = line_result?;

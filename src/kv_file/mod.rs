@@ -1,18 +1,16 @@
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Seek, SeekFrom, Write};
+use std::io::{BufWriter, ErrorKind, Seek, SeekFrom, Write};
 use std::os::unix::fs::MetadataExt;
+
+use serde::{Deserialize, Serialize};
 
 use crate::error::{DbResult, Error};
 use crate::kvdb::KeyStatus;
+use crate::serializers::{self, Serializer, SerializerEnum};
 
 use self::iterator::KVFileIterator;
-use self::utils::write_line;
 
 mod iterator;
-mod utils;
-
-const DELIMITER: &str = ",";
-const TOMBSTONE: &str = "🪦";
 
 #[derive(Debug)]
 pub struct KVLine {
@@ -21,22 +19,61 @@ pub struct KVLine {
     pub offset: u64,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct KVRecord {
+    is_present: bool,
+    key: String,
+    value: String,
+}
+
+#[derive(Copy, Clone)]
+pub enum KVFileSerializerOption {
+    Avro,
+    MessagePack,
+    JSON,
+}
+
 pub struct KVFile {
     pub dir_path: String,
     pub file_name: String,
+    pub serializer_option: KVFileSerializerOption,
+    serializer: SerializerEnum,
     file: Option<File>,
 }
 
 impl KVFile {
-    pub fn new(dir_path: &str, file_name: &str) -> DbResult<KVFile> {
+    pub fn new(
+        dir_path: &str,
+        file_name: &str,
+        serializer_option: KVFileSerializerOption,
+    ) -> DbResult<Self> {
+        let serializer = match serializer_option {
+            KVFileSerializerOption::Avro => SerializerEnum::Avro(serializers::AvroSerializer::new(
+                "./src/kv_file/kvfile.avsc",
+            )?),
+            KVFileSerializerOption::MessagePack => {
+                SerializerEnum::MessagePack(serializers::MessagePackSerializer::new())
+            }
+            KVFileSerializerOption::JSON => {
+                SerializerEnum::JSON(serializers::JsonSerializer::new())
+            }
+        };
         Ok(KVFile {
             dir_path: dir_path.to_string(),
             file_name: file_name.to_string(),
             file: None,
+            serializer_option,
+            serializer,
         })
     }
-    pub fn copy(file: &Self) -> DbResult<KVFile> {
-        Self::new(&file.dir_path, &file.file_name)
+    pub fn copy(file: &Self) -> DbResult<Self> {
+        Ok(KVFile {
+            dir_path: file.dir_path.to_string(),
+            file_name: file.file_name.to_string(),
+            file: None,
+            serializer_option: file.serializer_option,
+            serializer: file.serializer.copy()?,
+        })
     }
     pub fn iter(&mut self) -> DbResult<KVFileIterator> {
         self.create_iterator(0)
@@ -53,7 +90,20 @@ impl KVFile {
         self.open_file()?;
         let file = self.file.as_mut().unwrap();
         let pos = file.seek(SeekFrom::End(0))?;
-        write_line(file, key, status).and(Ok(pos))
+        let record = match status {
+            KeyStatus::Deleted => KVRecord {
+                is_present: false,
+                key: key.to_string(),
+                value: "".to_string(),
+            },
+            KeyStatus::Present(value) => KVRecord {
+                is_present: true,
+                key: key.to_string(),
+                value: value.to_string(),
+            },
+        };
+        self.serializer.write(record, &mut BufWriter::new(file))?;
+        Ok(pos)
     }
     pub fn read_at_offset(&mut self, offset: u64) -> DbResult<Option<String>> {
         for line_result in self.iter_from_offset(offset)? {
@@ -118,7 +168,7 @@ impl KVFile {
     fn create_iterator(&mut self, offset: u64) -> DbResult<KVFileIterator> {
         self.open_file()?;
         let file = self.file.as_mut().unwrap();
-        KVFileIterator::new(file, offset)
+        KVFileIterator::new(&mut self.serializer, file, offset)
     }
 }
 

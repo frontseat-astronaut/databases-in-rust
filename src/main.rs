@@ -1,6 +1,7 @@
 use std::{collections::VecDeque, fs};
 
 use in_memory_db::InMemoryDb;
+use kv_file::KVFileSerializerOption;
 use kvdb::KVDb;
 use log_db::LogDb;
 use log_with_index_db::LogWithIndexDb;
@@ -16,10 +17,13 @@ mod log_db;
 mod log_with_index_db;
 mod segmented_files_db;
 mod segmented_logs_with_indices_db;
+mod serializers;
 mod sstable;
 mod test;
 mod tmp_file_names;
 mod utils;
+
+const SERIALIZER_OPTION: KVFileSerializerOption = KVFileSerializerOption::MessagePack;
 
 fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box<dyn KVDb>> {
     let _ = fs::remove_dir_all("./db_files/");
@@ -28,10 +32,12 @@ fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box
     dbs.push_back(Box::new(InMemoryDb::new()));
     if include_log_db {
         // too slow
-        dbs.push_back(Box::new(LogDb::new("db_files/log_db/", "log.txt").unwrap()));
+        dbs.push_back(Box::new(
+            LogDb::new("db_files/log_db/", "log.txt", SERIALIZER_OPTION).unwrap(),
+        ));
     }
     dbs.push_back(Box::new(
-        LogWithIndexDb::new("db_files/log_with_index_db/", "log.txt").unwrap(),
+        LogWithIndexDb::new("db_files/log_with_index_db/", "log.txt", SERIALIZER_OPTION).unwrap(),
     ));
     if include_all_variants {
         for merge_threshold in (1..10).step_by(4) {
@@ -44,6 +50,7 @@ fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box
                         ),
                         size_threshold,
                         merge_threshold,
+                        SERIALIZER_OPTION,
                     )
                     .unwrap(),
                 ));
@@ -61,6 +68,7 @@ fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box
                             merging_threshold,
                             sparsity,
                             memtable_size_threshold,
+                            SERIALIZER_OPTION,
                         )
                         .unwrap(),
                     ));
@@ -73,11 +81,12 @@ fn prepare_dbs(include_log_db: bool, include_all_variants: bool) -> VecDeque<Box
                 "db_files/segmented_logs_with_indices_db/",
                 1000,
                 10000,
+                SERIALIZER_OPTION,
             )
             .unwrap(),
         ));
         dbs.push_back(Box::new(
-            SSTable::new("db_files/sstable/", 5, 500, 1000).unwrap(),
+            SSTable::new("db_files/sstable/", 5, 500, 1000, SERIALIZER_OPTION).unwrap(),
         ));
     }
     dbs
@@ -95,11 +104,11 @@ fn run_test_suite<T: Test>(test_suite: T, mut dbs: VecDeque<Box<dyn KVDb>>) {
 
 fn main() {
     /* CORRECTNESS TESTS */
-    for _ in 0..5 {
-        let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9, false);
-        let dbs = prepare_dbs(false, false);
-        run_test_suite(correctness_test_suite, dbs);
-    }
+    //for _ in 0..5 {
+    //    let correctness_test_suite = CorrectnessTest::new(20000, 100000, 0.5, 0.8, 0.9, false);
+    //    let dbs = prepare_dbs(false, false);
+    //    run_test_suite(correctness_test_suite, dbs);
+    //}
 
     // /* LATENCY TESTS */
     // let latency_test_suite = LatencyTest::new(50000, 20000, 0.5, 0.7, 0.8, false);
@@ -107,9 +116,9 @@ fn main() {
     // run_test_suite(latency_test_suite, dbs);
 
     // /* TESTS WITH LESSER NUMBER OF KEYS (because log db is so slow) */
-    // let correctness_test_suite = CorrectnessTest::new(2000, 10000, 0.5, 0.7, 0.9, false);
-    // let dbs = prepare_dbs(true, false);
-    // run_test_suite(correctness_test_suite, dbs);
+    //let correctness_test_suite = CorrectnessTest::new(2000, 10000, 0.5, 0.7, 0.9, false);
+    //let dbs = prepare_dbs(false, false);
+    //run_test_suite(correctness_test_suite, dbs);
 
     // let latency_test_suite = LatencyTest::new(2000, 10000, 0.5, 0.7, 0.8, false);
     // let dbs = prepare_dbs(true, false);
@@ -117,7 +126,7 @@ fn main() {
 
     /* RUNNING ON BENCHMARK TESTS */
     let small_benchmark = LatencyTest::from_file("test_cases/2000_10000_0.5_0.7_0.9.txt");
-    let dbs = prepare_dbs(true, true);
+    let dbs = prepare_dbs(false, true);
     run_test_suite(small_benchmark, dbs);
 
     let big_benchmark = LatencyTest::from_file("test_cases/20000_100000_0.5_0.8_0.9.txt");

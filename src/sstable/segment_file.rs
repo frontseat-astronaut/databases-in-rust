@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::mem::replace;
 
 use crate::error::DbResult;
+use crate::kv_file::KVFileSerializerOption;
 use crate::tmp_file_names::{TMP_COMPACTION_FILE_NAME, TMP_MERGING_FILE_NAME};
 use crate::{
     kv_file::{KVFile, KVLine},
@@ -45,7 +46,11 @@ impl SegmentFile for File {
         get_status(&self.sparse_index, &mut self.kvfile, key)
     }
     fn absorb<'a>(&mut self, other: &mut Reader<'a>) -> DbResult<()> {
-        let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_MERGING_FILE_NAME)?;
+        let mut new_file = KVFile::new(
+            &self.kvfile.dir_path,
+            TMP_MERGING_FILE_NAME,
+            self.kvfile.serializer_option,
+        )?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
 
@@ -115,7 +120,11 @@ impl SegmentFile for File {
         let old_sparse_index = replace(&mut self.sparse_index, vec![]);
         drop(old_sparse_index);
 
-        let mut new_file = KVFile::new(&self.kvfile.dir_path, TMP_COMPACTION_FILE_NAME)?;
+        let mut new_file = KVFile::new(
+            &self.kvfile.dir_path,
+            TMP_COMPACTION_FILE_NAME,
+            self.kvfile.serializer_option,
+        )?;
         let mut new_index = vec![];
         let mut last_indexed_offset = 0;
 
@@ -176,11 +185,12 @@ impl SegmentReaderFactory<File> for ReaderFactory {
 pub struct Factory {
     pub dir_path: String,
     pub sparsity: u64,
+    pub serializer: KVFileSerializerOption,
 }
 
 impl SegmentFileFactory<File> for Factory {
     fn new(&self, file_name: &str) -> DbResult<File> {
-        let kvfile = KVFile::new(&self.dir_path, file_name)?;
+        let kvfile = KVFile::new(&self.dir_path, file_name, self.serializer)?;
         Ok(File {
             sparsity: self.sparsity,
             kvfile,
@@ -189,7 +199,7 @@ impl SegmentFileFactory<File> for Factory {
         })
     }
     fn from_disk(&self, file_name: &str) -> DbResult<File> {
-        let mut kvfile = KVFile::new(&self.dir_path, file_name)?;
+        let mut kvfile = KVFile::new(&self.dir_path, file_name, self.serializer)?;
 
         let mut last_indexed_offset = 0;
         let mut sparse_index = vec![];

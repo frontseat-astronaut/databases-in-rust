@@ -1,4 +1,5 @@
 use crate::error::DbResult;
+use crate::kv_file::KVFileSerializerOption;
 use crate::tmp_file_names::TMP_COMPACTION_FILE_NAME;
 use crate::{
     in_memory_db::InMemoryDb,
@@ -52,7 +53,11 @@ impl SegmentFile for File {
         self.kvfile.rename(new_file_name)
     }
     fn compact(&mut self) -> DbResult<()> {
-        let mut compact_kvfile = KVFile::new(&self.kvfile.dir_path, TMP_COMPACTION_FILE_NAME)?;
+        let mut compact_kvfile = KVFile::new(
+            &self.kvfile.dir_path,
+            TMP_COMPACTION_FILE_NAME,
+            self.kvfile.serializer_option,
+        )?;
         let mut compact_index = InMemoryDb::new();
         for key in self.index.keys() {
             // skip deleted entries
@@ -93,11 +98,12 @@ impl SegmentReaderFactory<File> for ReaderFactory {
 pub struct Factory {
     pub dir_path: String,
     pub file_size_threshold: u64,
+    pub serializer: KVFileSerializerOption,
 }
 
 impl SegmentFileFactory<File> for Factory {
     fn new(&self, file_name: &str) -> DbResult<File> {
-        let kvfile = KVFile::new(&self.dir_path, file_name)?;
+        let kvfile = KVFile::new(&self.dir_path, file_name, self.serializer)?;
         let index = InMemoryDb::new();
         Ok(File {
             kvfile,
@@ -106,7 +112,7 @@ impl SegmentFileFactory<File> for Factory {
         })
     }
     fn from_disk(&self, file_name: &str) -> DbResult<File> {
-        let mut kvfile = KVFile::new(&self.dir_path, file_name)?;
+        let mut kvfile = KVFile::new(&self.dir_path, file_name, self.serializer)?;
         let mut index = InMemoryDb::new();
         for line_result in kvfile.iter()? {
             let line = line_result?;

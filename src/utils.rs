@@ -1,5 +1,5 @@
-use std::{fs::read_dir, path::PathBuf, thread::JoinHandle};
 use crate::error::DbResult;
+use std::{fs::read_dir, path::PathBuf, thread::JoinHandle};
 
 #[macro_export]
 macro_rules! check_key_status {
