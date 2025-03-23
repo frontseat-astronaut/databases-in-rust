@@ -9,7 +9,14 @@ use crate::{
     serializers::{Serializer, SerializerEnum},
 };
 
-use super::{KVEntry, KVFileRecord};
+use super::KVFileRecord;
+
+#[derive(Debug)]
+pub struct KVEntry {
+    pub key: String,
+    pub status: KeyStatus<String>,
+    pub offset: u64,
+}
 
 pub enum KVFileIterator<'a> {
     Stopped,

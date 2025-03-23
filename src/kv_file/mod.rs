@@ -10,14 +10,9 @@ use crate::serializers::{self, Serializer, SerializerEnum};
 
 use self::iterator::KVFileIterator;
 
-mod iterator;
+pub use self::iterator::KVEntry;
 
-#[derive(Debug)]
-pub struct KVEntry {
-    pub key: String,
-    pub status: KeyStatus<String>,
-    pub offset: u64,
-}
+mod iterator;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct KVFileRecord {
