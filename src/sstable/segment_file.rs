@@ -5,7 +5,7 @@ use crate::error::DbResult;
 use crate::kv_file::KVFileSerializerOption;
 use crate::tmp_file_names::{TMP_COMPACTION_FILE_NAME, TMP_MERGING_FILE_NAME};
 use crate::{
-    kv_file::{KVFile, KVLine},
+    kv_file::{KVFile, KVEntry},
     kvdb::KeyStatus,
     segmented_files_db::segment_file::{
         SegmentFile, SegmentFileFactory, SegmentReader, SegmentReaderFactory,
@@ -65,9 +65,9 @@ impl SegmentFile for File {
         loop {
             let use_other = match &this_buf {
                 None => true,
-                Some(KVLine { key: this_key, .. }) => match &other_buf {
+                Some(KVEntry { key: this_key, .. }) => match &other_buf {
                     None => false,
-                    Some(KVLine { key: other_key, .. }) => this_key >= other_key,
+                    Some(KVEntry { key: other_key, .. }) => this_key >= other_key,
                 },
             };
             let (buf, iter) = match use_other {
@@ -82,20 +82,20 @@ impl SegmentFile for File {
                         break;
                     }
                 }
-                Some(KVLine {
+                Some(KVEntry {
                     key: ref prev_key,
                     status: prev_status,
                     ..
                 }) => {
                     let should_write = match writer_buf {
                         None => true,
-                        Some(KVLine {
+                        Some(KVEntry {
                             key: ref current_key,
                             ..
                         }) => current_key > prev_key,
                     };
                     if should_write {
-                        let offset = new_file.append_line(&prev_key, &prev_status)?;
+                        let offset = new_file.append_entry(&prev_key, &prev_status)?;
                         if should_create_new_index_entry(
                             &new_index,
                             offset,
@@ -130,18 +130,18 @@ impl SegmentFile for File {
 
         let mut file_iter = self.kvfile.iter()?;
         loop {
-            let Some(line) = file_iter.try_next()? else {
+            let Some(entry) = file_iter.try_next()? else {
                 break;
             };
             // skip deleted entries
-            if let KeyStatus::Present(_) = line.status {
+            if let KeyStatus::Present(_) = entry.status {
                 set_status(
                     &mut new_index,
                     &mut last_indexed_offset,
                     self.sparsity,
                     &mut new_file,
-                    &line.key,
-                    &line.status,
+                    &entry.key,
+                    &entry.status,
                 )?;
             }
         }
@@ -203,8 +203,8 @@ impl SegmentFileFactory<File> for Factory {
 
         let mut last_indexed_offset = 0;
         let mut sparse_index = vec![];
-        for line_result in kvfile.iter()? {
-            let KVLine { key, offset, .. } = line_result?;
+        for entry_result in kvfile.iter()? {
+            let KVEntry { key, offset, .. } = entry_result?;
             if should_create_new_index_entry(
                 &sparse_index,
                 offset,
@@ -239,13 +239,13 @@ fn get_status(
     let (_, start_offset) = sparse_index.get(index).unwrap();
 
     let mut status = None;
-    for line_result in kvfile.iter_from_offset(*start_offset)? {
-        let line = line_result?;
-        if line.key.as_str() > key {
+    for entry_result in kvfile.iter_from_offset(*start_offset)? {
+        let entry = entry_result?;
+        if entry.key.as_str() > key {
             break;
         }
-        if line.key == key {
-            status = Some(line.status)
+        if entry.key == key {
+            status = Some(entry.status)
         }
     }
     Ok(status)
@@ -259,7 +259,7 @@ fn set_status(
     key: &str,
     status: &KeyStatus<String>,
 ) -> DbResult<()> {
-    kvfile.append_line(key, status).and_then(|offset| {
+    kvfile.append_entry(key, status).and_then(|offset| {
         if should_create_new_index_entry(&sparse_index, offset, *last_indexed_offset, sparsity) {
             sparse_index.push((key.to_owned(), offset));
             *last_indexed_offset = offset;

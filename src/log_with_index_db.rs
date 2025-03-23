@@ -1,6 +1,6 @@
 use crate::error::DbResult;
 use crate::in_memory_db::InMemoryDb;
-use crate::kv_file::{KVFile, KVFileSerializerOption, KVLine};
+use crate::kv_file::{KVFile, KVFileSerializerOption, KVEntry};
 use crate::kvdb::{KVDb, KeyStatus};
 
 pub struct LogWithIndexDb {
@@ -14,12 +14,12 @@ impl KVDb for LogWithIndexDb {
     }
     fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.file
-            .append_line(key, &KeyStatus::Present(value.to_string()))
+            .append_entry(key, &KeyStatus::Present(value.to_string()))
             .and_then(|offset| Ok(self.index.set(key, &offset)))
     }
     fn delete(&mut self, key: &str) -> DbResult<()> {
         self.file
-            .append_line(key, &KeyStatus::Deleted)
+            .append_entry(key, &KeyStatus::Deleted)
             .and_then(|_| Ok(self.index.delete(key)))
     }
     fn get(&mut self, key: &str) -> DbResult<Option<String>> {
@@ -39,7 +39,7 @@ impl LogWithIndexDb {
         let mut index = InMemoryDb::new();
         let mut file = KVFile::new(dir_path, file_name, serializer)?;
         for line_result in file.iter()? {
-            let KVLine {
+            let KVEntry {
                 key,
                 status,
                 offset,

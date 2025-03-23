@@ -45,7 +45,7 @@ impl KVDb for SSTable {
     fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.flush_memtable_if_big().and_then(|_| {
             let status = Present(value.to_string());
-            if let Err(e) = self.memtable_backup.append_line(key, &status) {
+            if let Err(e) = self.memtable_backup.append_entry(key, &status) {
                 println!("error in writing to memtable backup: {}", e);
             }
             self.memtable.insert(key.to_string(), status);
@@ -54,7 +54,7 @@ impl KVDb for SSTable {
     }
     fn delete(&mut self, key: &str) -> DbResult<()> {
         self.flush_memtable_if_big().and_then(|_| {
-            if let Err(e) = self.memtable_backup.append_line(key, &Deleted) {
+            if let Err(e) = self.memtable_backup.append_entry(key, &Deleted) {
                 println!("error in writing to memtable backup: {}", e);
             }
             self.memtable.insert(key.to_string(), Deleted);

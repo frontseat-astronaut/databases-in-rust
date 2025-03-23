@@ -114,11 +114,11 @@ impl SegmentFileFactory<File> for Factory {
     fn from_disk(&self, file_name: &str) -> DbResult<File> {
         let mut kvfile = KVFile::new(&self.dir_path, file_name, self.serializer)?;
         let mut index = InMemoryDb::new();
-        for line_result in kvfile.iter()? {
-            let line = line_result?;
-            match line.status {
-                Present(_) => index.set(&line.key, &Present(line.offset)),
-                Deleted => index.set(&line.key, &Deleted),
+        for entry_result in kvfile.iter()? {
+            let entry = entry_result?;
+            match entry.status {
+                Present(_) => index.set(&entry.key, &Present(entry.offset)),
+                Deleted => index.set(&entry.key, &Deleted),
             }
         }
         Ok(File {
@@ -149,7 +149,7 @@ fn set_status(
     key: &str,
     status: &KeyStatus<String>,
 ) -> DbResult<()> {
-    kvfile.append_line(key, &status).and_then(|offset| {
+    kvfile.append_entry(key, &status).and_then(|offset| {
         Ok(index.set(
             key,
             &match status {

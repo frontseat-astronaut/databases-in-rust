@@ -12,11 +12,11 @@ impl KVDb for LogDb {
     }
     fn set(&mut self, key: &str, value: &str) -> DbResult<()> {
         self.file
-            .append_line(key, &KeyStatus::Present(value.to_owned()))
+            .append_entry(key, &KeyStatus::Present(value.to_owned()))
             .and(Ok(()))
     }
     fn delete(&mut self, key: &str) -> DbResult<()> {
-        self.file.append_line(key, &KeyStatus::Deleted).and(Ok(()))
+        self.file.append_entry(key, &KeyStatus::Deleted).and(Ok(()))
     }
     fn get(&mut self, key: &str) -> DbResult<Option<String>> {
         let mut value = None;

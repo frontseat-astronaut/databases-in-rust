@@ -9,7 +9,7 @@ use crate::{
     serializers::{Serializer, SerializerEnum},
 };
 
-use super::{KVLine, KVRecord};
+use super::{KVEntry, KVFileRecord};
 
 pub enum KVFileIterator<'a> {
     Stopped,
@@ -17,7 +17,7 @@ pub enum KVFileIterator<'a> {
 }
 
 impl<'a> Iterator for KVFileIterator<'a> {
-    type Item = DbResult<KVLine>;
+    type Item = DbResult<KVEntry>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let Self::Running(serializer, reader) = self else {
@@ -31,12 +31,12 @@ impl<'a> Iterator for KVFileIterator<'a> {
                 return None;
             }
         }
-        match serializer.read::<KVRecord, &mut File>(reader) {
+        match serializer.read::<KVFileRecord, &mut File>(reader) {
             Ok(None) => {
                 *self = Self::Stopped;
                 None
             }
-            Ok(Some(record)) => Some(Ok(KVLine {
+            Ok(Some(record)) => Some(Ok(KVEntry {
                 key: record.key,
                 status: if record.is_present {
                     KeyStatus::Present(record.value)
@@ -61,7 +61,7 @@ impl<'a> KVFileIterator<'a> {
         file.seek(SeekFrom::Start(offset))?;
         Ok(Self::Running(serializer, BufReader::new(file)))
     }
-    pub fn try_next(&mut self) -> DbResult<Option<KVLine>> {
+    pub fn try_next(&mut self) -> DbResult<Option<KVEntry>> {
         match self.next() {
             None => Ok(None),
             Some(Ok(inner)) => Ok(Some(inner)),

@@ -13,14 +13,14 @@ use self::iterator::KVFileIterator;
 mod iterator;
 
 #[derive(Debug)]
-pub struct KVLine {
+pub struct KVEntry {
     pub key: String,
     pub status: KeyStatus<String>,
     pub offset: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct KVRecord {
+struct KVFileRecord {
     is_present: bool,
     key: String,
     value: String,
@@ -86,17 +86,17 @@ impl KVFile {
         let metadata = self.file.as_mut().unwrap().metadata()?;
         Ok(metadata.size())
     }
-    pub fn append_line(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<u64> {
+    pub fn append_entry(&mut self, key: &str, status: &KeyStatus<String>) -> DbResult<u64> {
         self.open_file()?;
         let file = self.file.as_mut().unwrap();
         let pos = file.seek(SeekFrom::End(0))?;
         let record = match status {
-            KeyStatus::Deleted => KVRecord {
+            KeyStatus::Deleted => KVFileRecord {
                 is_present: false,
                 key: key.to_string(),
                 value: "".to_string(),
             },
-            KeyStatus::Present(value) => KVRecord {
+            KeyStatus::Present(value) => KVFileRecord {
                 is_present: true,
                 key: key.to_string(),
                 value: value.to_string(),
@@ -106,9 +106,9 @@ impl KVFile {
         Ok(pos)
     }
     pub fn read_at_offset(&mut self, offset: u64) -> DbResult<Option<String>> {
-        for line_result in self.iter_from_offset(offset)? {
-            let line = line_result?;
-            return Ok(line.status.into());
+        for entry_result in self.iter_from_offset(offset)? {
+            let entry = entry_result?;
+            return Ok(entry.status.into());
         }
         Ok(None)
     }
